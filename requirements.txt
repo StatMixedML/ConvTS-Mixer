@@ -1,1 +1,2 @@
 git+https://github.com/awslabs/gluonts.git
+git+https://github.com/zalandoresearch/pytorch-ts.git@version-0.7.0
