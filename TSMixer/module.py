@@ -22,11 +22,69 @@ from gluonts.torch.scaler import StdScaler, MeanScaler, NOPScaler
 from gluonts.torch.distributions import StudentTOutput
 
 
-def make_linear_layer(dim_in, dim_out):
-    lin = nn.Linear(dim_in, dim_out)
-    torch.nn.init.uniform_(lin.weight, -0.07, 0.07)
-    torch.nn.init.zeros_(lin.bias)
-    return lin
+class MLP_Time(nn.Module):
+    """MLP for time embedding.
+
+    :argument
+        - in_channels (int): input channels
+        - ts_length (int): time series length
+        - dropout (float): dropout rate
+
+    :return
+        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+    """
+
+    def __init__(self, in_channels, ts_length, dropout=0.1, batch_norm=False):
+        super().__init__()
+        modules = []
+        if batch_norm:
+            modules.append(nn.BatchNorm1d(in_channels))
+
+        modules.append(nn.Linear(ts_length, ts_length))
+        modules.append(nn.ReLU())
+        modules.append(nn.Dropout(dropout))
+        self.time_mlp = nn.Sequential(*modules)
+
+    def forward(self, x):
+        x_time = self.time_mlp(x.transpose(1, 2))
+        return x + x_time.transpose(
+            1, 2
+        )  # not sure if we need a residual connection here. The paper doesn't mention it.
+
+
+class MLP_Feat(nn.Module):
+    """MLPs for feature embedding.
+
+    :argument
+        - in_channels (int): input channels
+
+        - embed_dim (int): embedding dimension
+        - dropout (float): dropout rate
+
+    :return
+        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+    """
+
+    def __init__(
+        self, in_channels, ts_length, embed_dim, dropout=0.1, batch_norm=False
+    ):
+        super().__init__()
+
+        modules = []
+        if batch_norm:
+            modules.append(nn.BatchNorm1d(ts_length))
+        modules.append(nn.Linear(in_channels, embed_dim))
+        modules.append(nn.ReLU())
+        modules.append(nn.Dropout(dropout))
+        self.feat_mlp1 = nn.Sequential(*modules)
+
+        self.feat_mlp2 = nn.Sequential(
+            nn.Linear(embed_dim, in_channels), nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        u = self.feat_mlp1(x)
+        return x + self.feat_mlp2(u)
 
 
 class TSMixerModel(nn.Module):
@@ -55,7 +113,9 @@ class TSMixerModel(nn.Module):
         context_length: int,
         scaling: str,
         input_size: int,
-        hidden_dimensions: Optional[List[int]] = None,
+        K: int,
+        hidden_size: int,
+        dropout: float,
         distr_output=StudentTOutput(),
         batch_norm: bool = False,
     ) -> None:
@@ -63,13 +123,12 @@ class TSMixerModel(nn.Module):
 
         assert prediction_length > 0
         assert context_length > 0
-        assert hidden_dimensions is None or len(hidden_dimensions) > 0
+        assert K > 0
 
         self.prediction_length = prediction_length
         self.context_length = context_length
-        self.hidden_dimensions = (
-            hidden_dimensions if hidden_dimensions is not None else [20, 20]
-        )
+        self.input_size = input_size
+
         if scaling == "mean":
             self.scaler = MeanScaler(keepdim=True)
         elif scaling == "std":
@@ -78,23 +137,25 @@ class TSMixerModel(nn.Module):
             self.scaler = NOPScaler(keepdim=True)
 
         self.distr_output = distr_output
-        self.batch_norm = batch_norm
-
-        dimensions = [context_length] + self.hidden_dimensions[:-1]
 
         modules = []
-        for in_size, out_size in zip(dimensions[:-1], dimensions[1:]):
-            modules += [make_linear_layer(in_size, out_size), nn.ReLU()]
-            if batch_norm:
-                modules.append(nn.BatchNorm1d(out_size))
-        modules.append(
-            make_linear_layer(
-                dimensions[-1], prediction_length * self.hidden_dimensions[-1]
+        for i in range(K):
+            modules.append(
+                MLP_Time(
+                    input_size, context_length, batch_norm=batch_norm, dropout=dropout
+                )
             )
-        )
-
+            modules.append(
+                MLP_Feat(
+                    input_size,
+                    context_length,
+                    hidden_size,
+                    batch_norm=batch_norm,
+                    dropout=dropout,
+                )
+            )
         self.nn = nn.Sequential(*modules)
-        self.args_proj = self.distr_output.get_args_proj(self.hidden_dimensions[-1])
+        self.args_proj = self.distr_output.get_args_proj(input_size)
 
     def describe_inputs(self, batch_size=1) -> InputSpec:
         return InputSpec(
@@ -122,9 +183,11 @@ class TSMixerModel(nn.Module):
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
 
-        nn_out = self.nn(past_target_scaled)
-        nn_out_reshaped = nn_out.reshape(
-            -1, self.prediction_length, self.hidden_dimensions[-1]
+        nn_out = self.nn(
+            past_target_scaled.unsqueeze(-1)
+            if self.input_size == 1
+            else past_target_scaled
         )
+        nn_out_reshaped = nn_out.reshape(-1, self.prediction_length, self.input_size)
         distr_args = self.args_proj(nn_out_reshaped)
         return distr_args, loc, scale

@@ -79,9 +79,6 @@ class TSMixerEstimator(PyTorchLightningEstimator):
     context_length
         Number of time steps prior to prediction time that the model
         takes as inputs (default: ``10 * prediction_length``).
-    hidden_dimensions
-        Size of hidden layers in the feed-forward network
-        (default: ``[20, 20]``).
     lr
         Learning rate (default: ``1e-3``).
     weight_decay
@@ -114,8 +111,10 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         freq: str,
         prediction_length: int,
         context_length: Optional[int] = None,
-        hidden_dimensions: Optional[List[int]] = None,
         input_size: int = 1,
+        K: int = 1,
+        hidden_size: int = 32,
+        dropout: float = 0.1,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -158,7 +157,9 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         )
         # TODO find way to enforce same defaults to network and estimator
         # somehow
-        self.hidden_dimensions = hidden_dimensions or [20, 20]
+        self.K = K
+        self.dropout = dropout
+        self.hidden_size = hidden_size
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -240,7 +241,9 @@ class TSMixerEstimator(PyTorchLightningEstimator):
                 "input_size": self.input_size,
                 "prediction_length": self.prediction_length,
                 "context_length": self.context_length,
-                "hidden_dimensions": self.hidden_dimensions,
+                "K": self.K,
+                "hidden_size": self.hidden_size,
+                "dropout": self.dropout,
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "batch_norm": self.batch_norm,
