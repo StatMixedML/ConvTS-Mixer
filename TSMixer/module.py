@@ -111,8 +111,14 @@ class TSMixerModel(nn.Module):
 
     def forward(
         self,
-        past_target: torch.Tensor,
-        past_observed_values: torch.Tensor,
+        feat_static_cat: Optional[torch.Tensor] = None,
+        feat_static_real: Optional[torch.Tensor] = None,
+        past_time_feat: Optional[torch.Tensor] = None,
+        past_target: Optional[torch.Tensor] = None,
+        past_observed_values: Optional[torch.Tensor] = None,
+        future_time_feat: Optional[torch.Tensor] = None,
+        future_target: Optional[torch.Tensor] = None,
+        future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
 
