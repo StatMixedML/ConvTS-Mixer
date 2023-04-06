@@ -68,7 +68,9 @@ class TSMixerLightningModule(pl.LightningModule):
         assert past_target.shape[-1] == self.model.context_length
         assert target.shape[-1] == self.model.prediction_length
 
-        distr_args, loc, scale = self.model(past_target, past_observed_values)
+        distr_args, loc, scale = self.model(
+            past_target=past_target, past_observed_values=past_observed_values
+        )
         distr = self.model.distr_output.distribution(distr_args, loc, scale)
 
         return (self.loss(distr, target) * observed_target).sum() / torch.maximum(

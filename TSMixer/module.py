@@ -54,6 +54,7 @@ class TSMixerModel(nn.Module):
         prediction_length: int,
         context_length: int,
         scaling: str,
+        input_size: int,
         hidden_dimensions: Optional[List[int]] = None,
         distr_output=StudentTOutput(),
         batch_norm: bool = False,
@@ -99,6 +100,9 @@ class TSMixerModel(nn.Module):
         return InputSpec(
             {
                 "past_target": Input(
+                    shape=(batch_size, self.context_length), dtype=torch.float
+                ),
+                "past_observed_values": Input(
                     shape=(batch_size, self.context_length), dtype=torch.float
                 ),
             },

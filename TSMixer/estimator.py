@@ -102,6 +102,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         prediction_length: int,
         context_length: Optional[int] = None,
         hidden_dimensions: Optional[List[int]] = None,
+        input_size: int = 1,
         scaling: Optional[str] = "mean",
         lr: float = 1e-3,
         weight_decay: float = 1e-8,
@@ -123,6 +124,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         super().__init__(trainer_kwargs=default_trainer_kwargs)
 
         self.scaling = scaling
+        self.input_size = input_size
         self.prediction_length = prediction_length
         self.context_length = context_length or 10 * prediction_length
         # TODO find way to enforce same defaults to network and estimator
