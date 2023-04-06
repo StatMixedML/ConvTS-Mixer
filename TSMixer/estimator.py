@@ -20,6 +20,7 @@ from gluonts.core.component import validated
 from gluonts.dataset.common import Dataset
 from gluonts.dataset.field_names import FieldName
 from gluonts.dataset.loader import as_stacked_batches
+from gluonts.dataset.stat import calculate_dataset_statistics
 from gluonts.itertools import Cyclic
 from gluonts.model.forecast_generator import DistributionForecastGenerator
 from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
@@ -31,8 +32,13 @@ from gluonts.transform import (
     ValidationSplitSampler,
     TestSplitSampler,
     ExpectedNumInstanceSampler,
-    SelectFields,
+    RemoveFields,
+    SetField,
+    AddTimeFeatures,
+    AddAgeFeature,
+    VstackFeatures,
 )
+from gluonts.time_feature import TimeFeature, time_features_from_frequency_str
 from gluonts.torch.model.estimator import PyTorchLightningEstimator
 from gluonts.torch.model.predictor import PyTorchPredictor
 from gluonts.torch.distributions import (
@@ -42,8 +48,14 @@ from gluonts.torch.distributions import (
 
 from .lightning_module import TSMixerLightningModule
 
-PREDICTION_INPUT_NAMES = ["past_target", "past_observed_values"]
-
+PREDICTION_INPUT_NAMES = [
+    "feat_static_cat",
+    "feat_static_real",
+    "past_time_feat",
+    "past_target",
+    "past_observed_values",
+    "future_time_feat",
+]
 
 TRAINING_INPUT_NAMES = PREDICTION_INPUT_NAMES + [
     "future_target",
@@ -99,11 +111,18 @@ class TSMixerEstimator(PyTorchLightningEstimator):
     @validated()
     def __init__(
         self,
+        freq: str,
         prediction_length: int,
         context_length: Optional[int] = None,
         hidden_dimensions: Optional[List[int]] = None,
         input_size: int = 1,
         scaling: Optional[str] = "mean",
+        num_feat_dynamic_real: int = 0,
+        num_feat_static_cat: int = 0,
+        num_feat_static_real: int = 0,
+        cardinality: Optional[List[int]] = None,
+        embedding_dimension: Optional[List[int]] = None,
+        time_features: Optional[List[TimeFeature]] = None,
         lr: float = 1e-3,
         weight_decay: float = 1e-8,
         distr_output: DistributionOutput = StudentTOutput(),
@@ -115,18 +134,28 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         train_sampler: Optional[InstanceSampler] = None,
         validation_sampler: Optional[InstanceSampler] = None,
     ) -> None:
-        default_trainer_kwargs = {
-            "max_epochs": 100,
-            "gradient_clip_val": 10.0,
-        }
+        default_trainer_kwargs = {"max_epochs": 100, "gradient_clip_val": 10.0}
         if trainer_kwargs is not None:
             default_trainer_kwargs.update(trainer_kwargs)
         super().__init__(trainer_kwargs=default_trainer_kwargs)
 
         self.scaling = scaling
+        self.freq = freq
         self.input_size = input_size
         self.prediction_length = prediction_length
         self.context_length = context_length or 10 * prediction_length
+        self.num_feat_dynamic_real = num_feat_dynamic_real
+        self.num_feat_static_cat = num_feat_static_cat
+        self.num_feat_static_real = num_feat_static_real
+        self.cardinality = (
+            cardinality if cardinality and num_feat_static_cat > 0 else [1]
+        )
+        self.embedding_dimension = embedding_dimension
+        self.time_features = (
+            time_features
+            if time_features is not None
+            else time_features_from_frequency_str(self.freq)
+        )
         # TODO find way to enforce same defaults to network and estimator
         # somehow
         self.hidden_dimensions = hidden_dimensions or [20, 20]
@@ -145,18 +174,61 @@ class TSMixerEstimator(PyTorchLightningEstimator):
             min_future=prediction_length
         )
 
+    @classmethod
+    def derive_auto_fields(cls, train_iter):
+        stats = calculate_dataset_statistics(train_iter)
+
+        return {
+            "num_feat_dynamic_real": stats.num_feat_dynamic_real,
+            "num_feat_static_cat": len(stats.feat_static_cat),
+            "cardinality": [len(cats) for cats in stats.feat_static_cat],
+        }
+
     def create_transformation(self) -> Transformation:
-        return SelectFields(
-            [
-                FieldName.ITEM_ID,
-                FieldName.INFO,
-                FieldName.START,
-                FieldName.TARGET,
-            ],
-            allow_missing=True,
-        ) + AddObservedValuesIndicator(
-            target_field=FieldName.TARGET,
-            output_field=FieldName.OBSERVED_VALUES,
+        remove_field_names = []
+        if self.num_feat_static_real == 0:
+            remove_field_names.append(FieldName.FEAT_STATIC_REAL)
+        if self.num_feat_dynamic_real == 0:
+            remove_field_names.append(FieldName.FEAT_DYNAMIC_REAL)
+
+        return (
+            RemoveFields(field_names=remove_field_names)
+            + (
+                SetField(output_field=FieldName.FEAT_STATIC_CAT, value=[0])
+                if not self.num_feat_static_cat > 0
+                else []
+            )
+            + (
+                SetField(output_field=FieldName.FEAT_STATIC_REAL, value=[0.0])
+                if not self.num_feat_static_real > 0
+                else []
+            )
+            + AddTimeFeatures(
+                start_field=FieldName.START,
+                target_field=FieldName.TARGET,
+                output_field=FieldName.FEAT_TIME,
+                time_features=self.time_features,
+                pred_length=self.prediction_length,
+            )
+            + AddAgeFeature(
+                target_field=FieldName.TARGET,
+                output_field=FieldName.FEAT_AGE,
+                pred_length=self.prediction_length,
+                log_scale=True,
+            )
+            + VstackFeatures(
+                output_field=FieldName.FEAT_TIME,
+                input_fields=[FieldName.FEAT_TIME, FieldName.FEAT_AGE]
+                + (
+                    [FieldName.FEAT_DYNAMIC_REAL]
+                    if self.num_feat_dynamic_real > 0
+                    else []
+                ),
+            )
+            + AddObservedValuesIndicator(
+                target_field=FieldName.TARGET,
+                output_field=FieldName.OBSERVED_VALUES,
+            )
         )
 
     def create_lightning_module(self) -> pl.LightningModule:
@@ -165,6 +237,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
             lr=self.lr,
             weight_decay=self.weight_decay,
             model_kwargs={
+                "input_size": self.input_size,
                 "prediction_length": self.prediction_length,
                 "context_length": self.context_length,
                 "hidden_dimensions": self.hidden_dimensions,
@@ -191,9 +264,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
             instance_sampler=instance_sampler,
             past_length=self.context_length,
             future_length=self.prediction_length,
-            time_series_fields=[
-                FieldName.OBSERVED_VALUES,
-            ],
+            time_series_fields=[FieldName.FEAT_TIME, FieldName.OBSERVED_VALUES],
             dummy_value=self.distr_output.value_in_support,
         )
 
