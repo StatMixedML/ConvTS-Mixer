@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from .model import MLP_Time
-
+from .model import MLP_Time as MLP_Time_Block
+from .model import MLP_Feat as MLP_Feat_Block
 
 class MLP_Feat(nn.Module):
     """MLP on feature domain.
@@ -19,13 +19,13 @@ class MLP_Feat(nn.Module):
                  embed_dim: int,
                  dropout: float = 0.1):
         super().__init__()
-        self.fc_s1 = nn.Sequential(
+        self.mlp1 = nn.Sequential(
             nn.Linear(n_feat, embed_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
 
-        self.fc_s2 = nn.Sequential(
+        self.mlp2 = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.Dropout(dropout)
         )
@@ -38,8 +38,8 @@ class MLP_Feat(nn.Module):
         self.bn = nn.BatchNorm1d(embed_dim)
 
     def forward(self, x):
-        v = self.fc_s1(x)
-        u = self.fc_s2(v)
+        v = self.mlp1(x)
+        u = self.mlp2(v)
         h = x if self.projector is None else self.projector(x)
         out = self.bn((h + u).transpose(1, 2)).transpose(1, 2)
         return out
@@ -97,13 +97,18 @@ class Mixer_Block(nn.Module):
                  dropout: float = 0.1):
         super().__init__()
 
-        self.mlp_time = MLP_Time(n_feat, fcst_h, embed_dim, dropout)
+        self.mlp_time = MLP_Time_Block(fcst_h, dropout)
         self.mlp_s = MLP_Feat(n_static_feat, embed_dim, dropout)
-        self.mlp_feat = MLP_Feat(embed_dim*3, embed_dim, dropout)
+        self.mlp_feat = MLP_Feat_Block(embed_dim*3, embed_dim, dropout)
+
+        # We apply an additional linear transformation on the output of MLP_Feat_Block. Otherwise, each block increase
+        # the output dimension by embed_dim
+        self.projector = nn.Linear(embed_dim*3, embed_dim*2)  # check again if this is necessary.
 
     def forward(self, x, s):
         x = self.mlp_time(x)
         out = self.mlp_feat(torch.cat([x, self.mlp_s(s)], dim=2))
+        out = self.projector(out)
         return out
 
 
@@ -166,20 +171,18 @@ class TS_Mixer_auxiliary(nn.Module):
         self.mlp_out = nn.Linear(embed_dim, out_dim)
 
         # Layer normalization
-        self.layer_norm = nn.LayerNorm(embed_dim)
+        self.layer_norm = nn.LayerNorm(out_dim)
 
     def forward(self, x, z, s):
 
-        # X: historical data
-        # Z: future time-varying features
-        # S: static features
+        # X: historical data of shape (batch_size, ts_length, Cx)
+        # Z: future time-varying features of shape (batch_size, fcst_h, Cz)
+        # S: static features of shape (batch_size, fcst_h, Cs)
 
         x = self.fc_map(x.transpose(1, 2)).transpose(1, 2)
         x_prime = self.mlp_x(torch.cat([x, self.mlp_sx(s)], dim=2))
         z_prime = self.mlp_z(torch.cat([z, self.mlp_sz(s)], dim=2))
         y_prime = torch.cat([x_prime, z_prime], dim=2)
-        print(f"y_prime: {y_prime.shape}")
         y_prime = self.mixer_blocks(y_prime, s)
-        print(f"mixer_block: {y_prime.shape}")
         out = self.layer_norm(self.mlp_out(y_prime))
         return out
