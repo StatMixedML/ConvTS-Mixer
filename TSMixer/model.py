@@ -6,24 +6,30 @@ class MLP_Time(nn.Module):
     :argument
         - in_channels (int): input channels
         - ts_length (int): time series length
+        - embed_dim (int): embedding dimension
         - dropout (float): dropout rate
 
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
 
-    def __init__(self, in_channels, ts_length, dropout=0.1):
+    def __init__(self, in_channels, ts_length, embed_dim, dropout=0.1):
         super().__init__()
-        self.time_mlp = nn.Sequential(
+        self.time_mlp1 = nn.Sequential(
             nn.BatchNorm1d(in_channels),
-            nn.Linear(ts_length, ts_length),
+            nn.Linear(ts_length, embed_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
 
+        self.time_mlp2 = nn.Sequential(
+            nn.Linear(embed_dim, ts_length),
+            nn.Dropout(dropout)
+        )
+
     def forward(self, x):
-        x_time = self.time_mlp(x.transpose(1,2))
-        return x + x_time.transpose(1,2) # not sure if we need a residual connection here. The paper doesn't mention it.
+        x_time = self.time_mlp1(x.transpose(1,2))
+        return x + self.time_mlp2(x_time).transpose(1,2)
 
 
 class MLP_Feat(nn.Module):
@@ -31,7 +37,7 @@ class MLP_Feat(nn.Module):
 
     :argument
         - in_channels (int): input channels
-
+        - ts_length (int): time series length
         - embed_dim (int): embedding dimension
         - dropout (float): dropout rate
 
@@ -54,8 +60,8 @@ class MLP_Feat(nn.Module):
         )
 
     def forward(self, x):
-        u = self.feat_mlp1(x)
-        return x + self.feat_mlp2(u)
+        x_feat = self.feat_mlp1(x)
+        return x + self.feat_mlp2(x_feat)
 
 class Mixer_Block(nn.Module):
     def __init__(self, in_channels, ts_length, embed_dim, dropout=0.1):
@@ -71,7 +77,7 @@ class Mixer_Block(nn.Module):
             - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
         """
         super().__init__()
-        self.mlp_time = MLP_Time(in_channels, ts_length, dropout)
+        self.mlp_time = MLP_Time(in_channels, ts_length, embed_dim, dropout)
         self.mlp_feat = MLP_Feat(in_channels, ts_length, embed_dim, dropout)
 
     def forward(self, x):
