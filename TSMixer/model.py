@@ -1,5 +1,6 @@
 import torch.nn as nn
 
+
 class MLP_Time(nn.Module):
     """MLP for time embedding.
 
@@ -32,8 +33,8 @@ class MLP_Time(nn.Module):
         )
 
     def forward(self, x):
-        x_time = self.time_mlp1(x.transpose(1,2))
-        return x + self.time_mlp2(x_time).transpose(1,2)
+        x_time = self.time_mlp1(x.transpose(1, 2))
+        return x + self.time_mlp2(x_time).transpose(1, 2)
 
 
 class MLP_Feat(nn.Module):
@@ -70,6 +71,7 @@ class MLP_Feat(nn.Module):
         x_feat = self.feat_mlp1(x)
         return x + self.feat_mlp2(x_feat)
 
+
 class Mixer_Block(nn.Module):
     """Mixer block.
 
@@ -96,6 +98,7 @@ class Mixer_Block(nn.Module):
         x = self.mlp_time(x)
         x = self.mlp_feat(x)
         return x
+
 
 class TS_Mixer(nn.Module):
     """Time Series Mixer.
@@ -129,5 +132,5 @@ class TS_Mixer(nn.Module):
 
     def forward(self, x):
         x = self.mixer_blocks(x)
-        x = self.fc(x.transpose(1,2))
-        return x.transpose(1,2)
+        x = self.fc(x.transpose(1, 2))
+        return x.transpose(1, 2)
