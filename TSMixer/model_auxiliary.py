@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from .model import MLP_Time
 
+
 class MLP_Feat(nn.Module):
     """MLP on feature domain.
 
@@ -13,8 +14,10 @@ class MLP_Feat(nn.Module):
     :return
         - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
     """
-
-    def __init__(self, n_feat, embed_dim, dropout=0.1):
+    def __init__(self,
+                 n_feat: int,
+                 embed_dim: int,
+                 dropout: float = 0.1):
         super().__init__()
         self.fc_s1 = nn.Sequential(
             nn.Linear(n_feat, embed_dim),
@@ -38,9 +41,7 @@ class MLP_Feat(nn.Module):
         v = self.fc_s1(x)
         u = self.fc_s2(v)
         h = x if self.projector is None else self.projector(x)
-        out = self.bn(
-            (h + u).transpose(1,2)
-        ).transpose(1,2)
+        out = self.bn((h + u).transpose(1, 2)).transpose(1, 2)
         return out
 
 
@@ -76,19 +77,24 @@ class MLP_Feat(nn.Module):
 
 
 class Mixer_Block(nn.Module):
-    def __init__(self, n_feat, n_static_feat, fcst_h, embed_dim, dropout=0.1):
-        """Mixer block.
+    """Mixer block.
 
-        :argument
-            - n_feat (int): number of input features
-            - n_static_feat (int): number of static features
-            - fcst_h (int): forecast horizon
-            - embed_dim (int): embedding dimension
-            - dropout (float): dropout rate, default 0.1
+    :argument
+        - n_feat (int): number of input features
+        - n_static_feat (int): number of static features
+        - fcst_h (int): forecast horizon
+        - embed_dim (int): embedding dimension
+        - dropout (float): dropout rate, default 0.1
 
-        :return
-            - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
-        """
+    :return
+        - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
+    """
+    def __init__(self,
+                 n_feat: int,
+                 n_static_feat: int,
+                 fcst_h: int,
+                 embed_dim: int,
+                 dropout: float = 0.1):
         super().__init__()
 
         self.mlp_time = MLP_Time(n_feat, fcst_h, embed_dim, dropout)
@@ -100,27 +106,37 @@ class Mixer_Block(nn.Module):
         out = self.mlp_feat(torch.cat([x, self.mlp_s(s)], dim=2))
         return out
 
+
 class TS_Mixer_auxiliary(nn.Module):
-    def __init__(self, n_ts, n_static_feat, n_dynamic_feat, ts_length, embed_dim, num_blocks, fcst_h, out_dim, dropout=0.1):
-        """Time Series Mixer with auxiliary static and dynamic features.
+    """Time Series Mixer with auxiliary static and dynamic features.
 
-        :argument
-            - n_ts (int): number of input time series
-            - n_static_feat (int): number of static features
-            - n_dynamic_feat (int): number of dynamic features
-            - ts_length (int): time series length
-            - embed_dim (int): embedding dimension
-            - num_blocks (int): number of mixer blocks
-            - fcst_h (int): forecast horizon
-            - out_dim (int): output dimension
-            - dropout (float): dropout rate, default 0.1
+    :argument
+        - n_ts (int): number of input time series
+        - n_static_feat (int): number of static features
+        - n_dynamic_feat (int): number of dynamic features
+        - ts_length (int): time series length
+        - embed_dim (int): embedding dimension
+        - num_blocks (int): number of mixer blocks
+        - fcst_h (int): forecast horizon
+        - out_dim (int): output dimension
+        - dropout (float): dropout rate, default 0.1
 
-        :return
-            - x (tensor): output tensor of shape (batch_size, fcst_h, out_dim)
+    :return
+        - x (tensor): output tensor of shape (batch_size, fcst_h, out_dim)
 
-       source:
+    source:
         - Algorithm 2 in https://arxiv.org/pdf/2303.06053.pdf
-        """
+    """
+    def __init__(self,
+                 n_ts: int,
+                 n_static_feat: int,
+                 n_dynamic_feat: int,
+                 ts_length: int,
+                 embed_dim: int,
+                 num_blocks: int,
+                 fcst_h: int,
+                 out_dim: int,
+                 dropout: float = 0.1):
         super().__init__()
 
         #  Number of features for sx and sz
@@ -158,25 +174,12 @@ class TS_Mixer_auxiliary(nn.Module):
         # Z: future time-varying features
         # S: static features
 
-        x = self.fc_map(x.transpose(1,2)).transpose(1,2)
-        print(f"x: {x.shape}")
-
+        x = self.fc_map(x.transpose(1, 2)).transpose(1, 2)
         x_prime = self.mlp_x(torch.cat([x, self.mlp_sx(s)], dim=2))
-        print(f"x_prime: {x_prime.shape}")
-
         z_prime = self.mlp_z(torch.cat([z, self.mlp_sz(s)], dim=2))
-        print(f"z_prime: {z_prime.shape}")
-
         y_prime = torch.cat([x_prime, z_prime], dim=2)
         print(f"y_prime: {y_prime.shape}")
-
         y_prime = self.mixer_blocks(y_prime, s)
         print(f"mixer_block: {y_prime.shape}")
-
-        out = self.layer_norm(
-            self.mlp_out(y_prime)
-        )
-        print(f"out: {out.shape}")
-
+        out = self.layer_norm(self.mlp_out(y_prime))
         return out
-

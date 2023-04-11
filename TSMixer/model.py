@@ -7,13 +7,17 @@ class MLP_Time(nn.Module):
         - in_channels (int): input channels
         - ts_length (int): time series length
         - embed_dim (int): embedding dimension
-        - dropout (float): dropout rate
+        - dropout (float): dropout rate, default 0.1
 
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
 
-    def __init__(self, in_channels, ts_length, embed_dim, dropout=0.1):
+    def __init__(self,
+                 in_channels: int,
+                 ts_length:  int,
+                 embed_dim: int,
+                 dropout: float = 0.1):
         super().__init__()
         self.time_mlp1 = nn.Sequential(
             nn.BatchNorm1d(in_channels),
@@ -39,13 +43,16 @@ class MLP_Feat(nn.Module):
         - in_channels (int): input channels
         - ts_length (int): time series length
         - embed_dim (int): embedding dimension
-        - dropout (float): dropout rate
+        - dropout (float): dropout rate, default 0.1
 
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
-
-    def __init__(self, in_channels, ts_length, embed_dim, dropout=0.1):
+    def __init__(self,
+                 in_channels: int,
+                 ts_length: int,
+                 embed_dim: int,
+                 dropout: float = 0.1):
         super().__init__()
         self.feat_mlp1 = nn.Sequential(
             nn.BatchNorm1d(ts_length),
@@ -64,18 +71,23 @@ class MLP_Feat(nn.Module):
         return x + self.feat_mlp2(x_feat)
 
 class Mixer_Block(nn.Module):
-    def __init__(self, in_channels, ts_length, embed_dim, dropout=0.1):
-        """Mixer block.
+    """Mixer block.
 
-        :argument
-            - in_channels (int): input channels
-            - ts_length (int): time series length
-            - embed_dim (int): embedding dimension
-            - dropout (float): dropout rate
+    :argument
+        - in_channels (int): input channels
+        - ts_length (int): time series length
+        - embed_dim (int): embedding dimension
+        - dropout (float): dropout rate, default 0.1
 
-        :return
-            - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
-        """
+    :return
+        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+    """
+    def __init__(self,
+                 in_channels: int,
+                 ts_length: int,
+                 embed_dim: int,
+                 dropout: float = 0.1):
+
         super().__init__()
         self.mlp_time = MLP_Time(in_channels, ts_length, embed_dim, dropout)
         self.mlp_feat = MLP_Feat(in_channels, ts_length, embed_dim, dropout)
@@ -86,20 +98,29 @@ class Mixer_Block(nn.Module):
         return x
 
 class TS_Mixer(nn.Module):
-    def __init__(self, in_channels, ts_length, embed_dim, num_blocks, fcst_h, dropout=0.1):
-        """Time Series Mixer.
+    """Time Series Mixer.
 
-        :argument
-            - in_channels (int): input channels
-            - ts_length (int): time series length
-            - embed_dim (int): embedding dimension
-            - num_blocks (int): number of mixer blocks
-            - fcst_h (int): forecast horizon
-            - dropout (float): dropout rate
+    :argument
+        - in_channels (int): input channels
+        - ts_length (int): time series length
+        - embed_dim (int): embedding dimension
+        - num_blocks (int): number of mixer blocks
+        - fcst_h (int): forecast horizon
+        - dropout (float): dropout rate, default 0.1
 
-        :return
-            - x (tensor): output tensor of shape (batch_size, fcst_h, in_channels)
-        """
+    :return
+        - x (tensor): output tensor of shape (batch_size, fcst_h, in_channels)
+
+    : source
+        - Algorithm 1 in https://arxiv.org/pdf/2303.06053.pdf
+    """
+    def __init__(self,
+                 in_channels: int,
+                 ts_length: int,
+                 embed_dim: int,
+                 num_blocks: int,
+                 fcst_h: int,
+                 dropout: float = 0.1):
         super().__init__()
         self.mixer_blocks = nn.Sequential(*[
             Mixer_Block(in_channels, ts_length, embed_dim, dropout) for _ in range(num_blocks)
