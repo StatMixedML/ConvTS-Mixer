@@ -113,7 +113,7 @@ class TS_Mixer(nn.Module):
         - x (tensor): output tensor of shape (batch_size, fcst_h, in_channels)
 
     : source
-        - Algorithm 1 in https://arxiv.org/pdf/2303.06053.pdf
+        - Algorithm 1 in [TSMixer: An all-MLP Architecture for Time Series Forecasting] (https://arxiv.org/pdf/2303.06053.pdf)
     """
     def __init__(self,
                  in_channels: int,
