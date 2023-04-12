@@ -57,7 +57,14 @@ class ConvTSMixerLightningModule(pl.LightningModule):
         self.weight_decay = weight_decay
 
     def forward(self, *args, **kwargs):
-        return self.model.forward(*args, **kwargs)
+        distr_args, loc, scale = self.model.forward(*args, **kwargs)
+        distr = self.model.distr_output.distribution(distr_args, loc, scale)
+        return distr.sample((self.model.num_parallel_samples,)).reshape(
+            -1,
+            self.model.num_parallel_samples,
+            self.model.prediction_length,
+            self.model.input_size,
+        )
 
     def _compute_loss(self, batch):
         past_target = batch["past_target"]

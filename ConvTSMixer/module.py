@@ -65,6 +65,7 @@ class ConvTSMixerModel(nn.Module):
         num_feat_static_real: int = 0,
         num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
+        num_parallel_samples: int = 100,
         batch_norm: bool = False,
     ) -> None:
         super().__init__()
@@ -78,6 +79,7 @@ class ConvTSMixerModel(nn.Module):
         self.input_size = input_size
         self.num_feat_static_real = num_feat_static_real
         self.num_feat_dynamic_real = num_feat_dynamic_real
+        self.num_parallel_samples = num_parallel_samples
 
         if scaling == "mean":
             self.scaler = MeanScaler(keepdim=True, dim=1)

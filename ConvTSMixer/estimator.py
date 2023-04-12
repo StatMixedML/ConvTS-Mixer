@@ -124,6 +124,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         weight_decay: float = 1e-8,
         distr_output: DistributionOutput = StudentTOutput(),
         loss: DistributionLoss = NegativeLogLikelihood(),
+        num_parallel_samples: int = 100,
         batch_size: int = 32,
         num_batches_per_epoch: int = 50,
         trainer_kwargs: Optional[Dict[str, Any]] = None,
@@ -161,6 +162,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
+        self.num_parallel_samples = num_parallel_samples
         self.loss = loss
         self.batch_size = batch_size
         self.num_batches_per_epoch = num_batches_per_epoch
@@ -248,6 +250,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
                 "num_feat_static_cat": self.num_feat_static_cat,
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
+                "num_parallel_samples": self.num_parallel_samples,
             },
         )
 
@@ -319,7 +322,6 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
             input_transform=transformation + prediction_splitter,
             input_names=PREDICTION_INPUT_NAMES,
             prediction_net=module,
-            forecast_generator=DistributionForecastGenerator(self.distr_output),
             batch_size=self.batch_size,
             prediction_length=self.prediction_length,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
