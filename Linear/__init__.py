@@ -15,8 +15,4 @@ from .module import LinearModel
 from .lightning_module import LinearLightningModule
 from .estimator import LinearEstimator
 
-__all__ = [
-    "LinearModel",
-    "LinearLightningModule",
-    "LinearEstimator",
-]
+__all__ = ["LinearModel", "LinearLightningModule", "LinearEstimator"]

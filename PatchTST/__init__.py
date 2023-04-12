@@ -11,8 +11,12 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-from .module import TSMixerModel
-from .lightning_module import TSMixerLightningModule
-from .estimator import TSMixerEstimator
+from .module import PatchTSTModel
+from .lightning_module import PatchTSTLightningModule
+from .estimator import PatchTSTEstimator
 
-__all__ = ["TSMixerModel", "TSMixerLightningModule", "TSMixerEstimator"]
+__all__ = [
+    "PatchTSTModel",
+    "PatchTSTLightningModule",
+    "PatchTSTEstimator",
+]
