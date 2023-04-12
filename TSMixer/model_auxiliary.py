@@ -57,7 +57,7 @@ class Mixer_Block(nn.Module):
         - dropout (float): dropout rate, default 0.1
 
     :return
-        - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
+        - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim*2)
     """
     def __init__(self,
                  n_feat: int,
@@ -94,7 +94,7 @@ class Mixer(nn.Module):
         - dropout (float): dropout rate, default 0.1
 
     :return
-        - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
+        - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim*2)
     """
     def __init__(self,
                  n_feat: int,
