@@ -165,12 +165,7 @@ class TS_Mixer_auxiliary(nn.Module):
         self.mlp_z = MLP_Feat(n_feat_sz, embed_dim, dropout)
 
         # Mixer blocks
-        self.mixer_blocks = Mixer(embed_dim*3,
-                                  n_static_feat,
-                                  fcst_h,
-                                  embed_dim,
-                                  num_blocks,
-                                  dropout)
+        self.mixer_blocks = Mixer(embed_dim*3, n_static_feat, fcst_h, embed_dim, num_blocks, dropout)
 
         # MLP that maps the output of the mixer blocks to the output dimension
         self.mlp_out = nn.Linear(embed_dim*2, out_dim)
