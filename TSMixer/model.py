@@ -5,7 +5,6 @@ class MLP_Time(nn.Module):
     """MLP for time embedding. According to the paper, the authors employ a single layer perceptron.
 
     :argument
-        - in_channels (int): number of input channels
         - ts_length (int): time series length
         - dropout (float): dropout rate
     :return
@@ -36,7 +35,6 @@ class MLP_Feat(nn.Module):
 
     :argument
         - in_channels (int): input channels
-        - ts_length (int): time series length
         - embed_dim (int): embedding dimension
         - dropout (float): dropout rate, default 0.1
 
