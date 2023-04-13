@@ -200,8 +200,14 @@ class TSMixerModel(nn.Module):
             for _ in range(n_blocks)
         ])
 
-        self.fc = nn.Linear(context_length, prediction_length)
-        self.args_proj = self.distr_output.get_args_proj(input_size)
+        # MLP that maps the output of the mixer blocks (=context_length) to the prediction length
+        self.ts_map = nn.Linear(context_length, prediction_length)
+
+        # MLP that maps the input_size to a higher hidden size, needed for the distr_output (only works for input_size = 1)?
+        self.hidden_map = nn.Linear(input_size, hidden_size)
+
+        # MLP that maps the hidden size from self.hidden_map to the distribution output
+        self.args_proj = self.distr_output.get_args_proj(hidden_size)
 
     def describe_inputs(self, batch_size=1) -> InputSpec:
         return InputSpec(
@@ -231,6 +237,7 @@ class TSMixerModel(nn.Module):
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
         past_target_scaled = past_target_scaled.unsqueeze(-1) if self.input_size == 1 else past_target_scaled
         nn_out = self.mixer_blocks(past_target_scaled)
-        nn_out = self.fc(nn_out.transpose(1, 2)).transpose(1, 2)
+        nn_out = self.ts_map(nn_out.transpose(1, 2)).transpose(1, 2)
+        nn_out = self.hidden_map(nn_out)
         distr_args = self.args_proj(nn_out)
         return distr_args, loc, scale
