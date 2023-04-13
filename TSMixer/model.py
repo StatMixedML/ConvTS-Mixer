@@ -11,7 +11,9 @@ class MLP_Time(nn.Module):
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
 
-    def __init__(self, ts_length, dropout=0.1):
+    def __init__(self,
+                 ts_length: int,
+                 dropout: float = 0.1):
         super().__init__()
 
         # BatchNorm1d is applied to the time dimension
