@@ -140,7 +140,7 @@ class TSMixerModel(nn.Module):
         If "none", the target values are not scaled.
     input_size
         Number of input channels.
-    K
+    n_blocks
         Number of mixer blocks
     hidden_size
         Size of hidden layers in the feed-forward network.
@@ -163,7 +163,7 @@ class TSMixerModel(nn.Module):
         context_length: int,
         scaling: str,
         input_size: int,
-        K: int,
+        n_blocks: int,
         hidden_size: int,
         dropout: float,
         batch_norm: bool = True,
@@ -173,7 +173,7 @@ class TSMixerModel(nn.Module):
 
         assert prediction_length > 0
         assert context_length > 0
-        assert K > 0
+        assert n_blocks > 0
 
         self.prediction_length = prediction_length
         self.context_length = context_length
@@ -194,7 +194,7 @@ class TSMixerModel(nn.Module):
                         hidden_size,
                         dropout,
                         batch_norm)
-            for _ in range(K)
+            for _ in range(n_blocks)
         ])
 
         self.fc = nn.Linear(context_length, prediction_length)
