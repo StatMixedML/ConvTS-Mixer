@@ -34,7 +34,10 @@ class MLP_Time(nn.Module):
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
 
-    def __init__(self, ts_length, dropout=0.1, batch_norm=True):
+    def __init__(self,
+                 ts_length: int,
+                 dropout: int = 0.1,
+                 batch_norm: bool = True):
         super().__init__()
 
         # BatchNorm1d is applied to the time dimension
@@ -70,7 +73,7 @@ class MLP_Feat(nn.Module):
                  in_channels: int,
                  embed_dim: int,
                  dropout: float = 0.1,
-                 batch_norm = True):
+                 batch_norm: bool = True):
         super().__init__()
 
         # BatchNorm1d is applied to the feature dimension
