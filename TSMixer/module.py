@@ -11,7 +11,7 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 
 import torch
 from torch import nn
@@ -26,9 +26,10 @@ class MLP_Time(nn.Module):
     """MLP for time embedding. According to the paper, the authors employ a single layer perceptron.
 
     :argument
-        - in_channels (int): number of input channels
         - ts_length (int): time series length
         - dropout (float): dropout rate
+        - batch_norm (bool): whether to apply batch normalization
+
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
@@ -40,11 +41,11 @@ class MLP_Time(nn.Module):
         self.batch_norm = nn.BatchNorm1d(ts_length) if batch_norm is True else None
 
         # MLP for time embedding
-        modules = []
-        modules.append(nn.Linear(ts_length, ts_length))
-        modules.append(nn.ReLU())
-        modules.append(nn.Dropout(dropout))
-        self.time_mlp = nn.Sequential(*modules)
+        self.time_mlp = nn.Sequential(
+            nn.Linear(ts_length, ts_length),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
 
     def forward(self, x):
         x_norm = x if self.batch_norm is None else self.batch_norm(x)
@@ -57,9 +58,9 @@ class MLP_Feat(nn.Module):
 
     :argument
         - in_channels (int): input channels
-        - ts_length (int): time series length
         - embed_dim (int): embedding dimension
         - dropout (float): dropout rate, default 0.1
+        - batch_norm (bool): whether to apply batch normalization
 
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
@@ -76,11 +77,11 @@ class MLP_Feat(nn.Module):
         self.batch_norm = nn.BatchNorm1d(in_channels) if batch_norm is True else None
 
         # MLPs for feature embedding
-        modules = []
-        modules.append(nn.Linear(in_channels, embed_dim))
-        modules.append(nn.ReLU())
-        modules.append(nn.Dropout(dropout))
-        self.feat_mlp1 = nn.Sequential(*modules)
+        self.feat_mlp1 = nn.Sequential(
+            nn.Linear(in_channels, embed_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
 
         self.feat_mlp2 = nn.Sequential(
             nn.Linear(embed_dim, in_channels),
@@ -93,6 +94,36 @@ class MLP_Feat(nn.Module):
         return x + self.feat_mlp2(x_feat)
 
 
+class Mixer_Block(nn.Module):
+    """Mixer block.
+
+    :argument
+        - in_channels (int): input channels
+        - ts_length (int): time series length
+        - embed_dim (int): embedding dimension
+        - dropout (float): dropout rate, default 0.1
+        - batch_norm (bool): whether to apply batch normalization
+
+    :return
+        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+    """
+    def __init__(self,
+                 in_channels: int,
+                 ts_length: int,
+                 embed_dim: int,
+                 dropout: float = 0.1,
+                 batch_norm: bool = True):
+
+        super().__init__()
+        self.mlp_time = MLP_Time(ts_length, dropout, batch_norm)
+        self.mlp_feat = MLP_Feat(in_channels, embed_dim, dropout, batch_norm)
+
+    def forward(self, x):
+        x = self.mlp_time(x)
+        x = self.mlp_feat(x)
+        return x
+
+
 class TSMixerModel(nn.Module):
     """
     Module implementing TSMixer for forecasting.
@@ -103,13 +134,26 @@ class TSMixerModel(nn.Module):
         Number of time points to predict.
     context_length
         Number of time steps prior to prediction time that the model.
-    hidden_dimensions
+    scaling
+        Whether to scale the target values. If "mean", the target values are scaled by the mean of the training set.
+        If "std", the target values are scaled by the standard deviation of the training set.
+        If "none", the target values are not scaled.
+    input_size
+        Number of input channels.
+    K
+        Number of mixer blocks
+    hidden_size
         Size of hidden layers in the feed-forward network.
+    dropout
+        Dropout rate. Default: ``0.1``.
+    batch_norm
+        Whether to apply batch normalization.
     distr_output
         Distribution to use to evaluate observations and sample predictions.
         Default: ``StudentTOutput()``.
-    batch_norm
-        Whether to apply batch normalization. Default: ``False``.
+
+    : References:
+        - Algorithm 1 in [TSMixer: An all-MLP Architecture for Time Series Forecasting] (https://arxiv.org/pdf/2303.06053.pdf)
     """
 
     @validated()
@@ -122,8 +166,8 @@ class TSMixerModel(nn.Module):
         K: int,
         hidden_size: int,
         dropout: float,
+        batch_norm: bool = True,
         distr_output=StudentTOutput(),
-        batch_norm: bool = False,
     ) -> None:
         super().__init__()
 
@@ -144,22 +188,16 @@ class TSMixerModel(nn.Module):
 
         self.distr_output = distr_output
 
-        modules = []
-        for i in range(K):
-            modules.append(
-                MLP_Time(
-                    context_length, batch_norm=True, dropout=dropout
-                )
-            )
-            modules.append(
-                MLP_Feat(
-                    input_size,
-                    hidden_size,
-                    batch_norm=True,
-                    dropout=dropout,
-                )
-            )
-        self.nn = nn.Sequential(*modules)
+        self.mixer_blocks = nn.Sequential(*[
+            Mixer_Block(input_size,
+                        context_length,
+                        hidden_size,
+                        dropout,
+                        batch_norm)
+            for _ in range(K)
+        ])
+
+        self.fc = nn.Linear(context_length, prediction_length)
         self.args_proj = self.distr_output.get_args_proj(input_size)
 
     def describe_inputs(self, batch_size=1) -> InputSpec:
@@ -186,13 +224,10 @@ class TSMixerModel(nn.Module):
         future_target: Optional[torch.Tensor] = None,
         future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
-        past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
 
-        nn_out = self.nn(
-            past_target_scaled.unsqueeze(-1)
-            if self.input_size == 1
-            else past_target_scaled
-        )
-        nn_out_reshaped = nn_out.reshape(-1, self.prediction_length, self.input_size)
-        distr_args = self.args_proj(nn_out_reshaped)
+        past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
+        past_target_scaled = past_target_scaled.unsqueeze(-1) if self.input_size == 1 else past_target_scaled
+        nn_out = self.mixer_blocks(past_target_scaled)
+        nn_out = self.fc(nn_out.transpose(1, 2)).transpose(1, 2)
+        distr_args = self.args_proj(nn_out)
         return distr_args, loc, scale
