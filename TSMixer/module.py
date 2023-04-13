@@ -36,7 +36,7 @@ class MLP_Time(nn.Module):
 
     def __init__(self,
                  ts_length: int,
-                 dropout: int = 0.1,
+                 dropout: float = 0.1,
                  batch_norm: bool = True):
         super().__init__()
 
