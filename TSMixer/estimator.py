@@ -112,7 +112,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         prediction_length: int,
         context_length: Optional[int] = None,
         input_size: int = 1,
-        K: int = 1,
+        n_blocks: int = 1,
         hidden_size: int = 32,
         dropout: float = 0.1,
         scaling: Optional[str] = "mean",
@@ -157,7 +157,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         )
         # TODO find way to enforce same defaults to network and estimator
         # somehow
-        self.K = K
+        self.n_blocks = n_blocks
         self.dropout = dropout
         self.hidden_size = hidden_size
         self.lr = lr
@@ -241,7 +241,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
                 "input_size": self.input_size,
                 "prediction_length": self.prediction_length,
                 "context_length": self.context_length,
-                "K": self.K,
+                "n_blocks": self.n_blocks,
                 "hidden_size": self.hidden_size,
                 "dropout": self.dropout,
                 "scaling": self.scaling,
