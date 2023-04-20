@@ -130,3 +130,6 @@ dmypy.json
 
 # logs
 lightning_logs
+
+# vscode
+.vscode/
