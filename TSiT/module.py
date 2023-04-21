@@ -13,6 +13,7 @@
 
 from typing import Tuple, Optional
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -31,9 +32,9 @@ class Residual(nn.Module):
         return self.fn(x) + x
 
 
-class ConvTSMixerModel(nn.Module):
+class TSiTModel(nn.Module):
     """
-    Module implementing ConvTSMixer for forecasting.
+    Module implementing TSiT for forecasting.
 
     Parameters
     ----------
@@ -59,14 +60,17 @@ class ConvTSMixerModel(nn.Module):
         input_size: int,
         depth: int,
         dim: int,
+        nhead: int,
         patch_size: int,
-        kernel_size: int,
+        dim_feedforward: int,
+        dropout: float,
+        activation: str,
+        norm_first: bool,
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
         num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
-        batch_norm: bool = True,
     ) -> None:
         super().__init__()
 
@@ -77,6 +81,7 @@ class ConvTSMixerModel(nn.Module):
         self.prediction_length = prediction_length
         self.context_length = context_length
         self.input_size = input_size
+        self.dim = dim
         self.num_feat_static_real = num_feat_static_real
         self.num_feat_dynamic_real = num_feat_dynamic_real
         self.num_parallel_samples = num_parallel_samples
@@ -90,31 +95,31 @@ class ConvTSMixerModel(nn.Module):
 
         self.distr_output = distr_output
 
-        self.conv_mixer = nn.Sequential(
-            nn.Conv2d(
-                self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
-            ),
-            nn.GELU(),
-            nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
-            *[
-                nn.Sequential(
-                    Residual(
-                        nn.Sequential(
-                            nn.Conv2d(
-                                dim, dim, kernel_size, groups=dim, padding="same"
-                            ),
-                            nn.GELU(),
-                            nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
-                        )
-                    ),
-                    nn.Conv2d(dim, dim, kernel_size=1),
-                    nn.GELU(),
-                    nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
-                )
-                for i in range(depth)
-            ],
-            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size)),
+        self.conv_proj = nn.Conv2d(
+            self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
         )
+
+        self.patch_num = (self.context_length // patch_size) * (
+            self.input_size // patch_size
+        )
+
+        self.positional_encoding = SinusoidalPositionalEmbedding(self.patch_num, dim)
+
+        layer_norm_eps: float = 1e-5
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=dim,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation,
+            layer_norm_eps=layer_norm_eps,
+            batch_first=True,
+            norm_first=norm_first,
+        )
+        encoder_norm = nn.LayerNorm(dim, eps=layer_norm_eps)
+        self.encoder = nn.TransformerEncoder(encoder_layer, depth, encoder_norm)
+
+        self.pool = nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
 
         self.args_proj = self.distr_output.get_args_proj(dim)
 
@@ -168,7 +173,7 @@ class ConvTSMixerModel(nn.Module):
             .repeat_interleave(dim=-1, repeats=self.input_size)
         )
 
-        conv_mixer_input = torch.cat(
+        proj_input = torch.cat(
             (
                 past_target_scaled,
                 log_abs_loc,
@@ -178,9 +183,62 @@ class ConvTSMixerModel(nn.Module):
             dim=1,
         )
 
+        x = self.conv_proj(proj_input)
+        B, C, H, W = x.shape
+
+        x = x.reshape(B, self.dim, -1)
+        x = x.permute(0, 2, 1)  # [B, P, D]
+        embed_pos = self.positional_encoding(x.size())
+        enc_out = self.encoder(x + embed_pos)
+
+        nn_out = self.pool(enc_out.permute(0, 2, 1).reshape(B, C, H, W))
+
         # [B, F, C, D] -> [B, F, P, D]
-        nn_out = self.conv_mixer(conv_mixer_input)
+
         nn_out_reshaped = nn_out.transpose(1, -1).transpose(1, 2)
         distr_args = self.args_proj(nn_out_reshaped)
 
         return distr_args, loc, scale
+
+
+class SinusoidalPositionalEmbedding(nn.Embedding):
+    """This module produces sinusoidal positional embeddings of any length."""
+
+    def __init__(self, num_positions: int, embedding_dim: int) -> None:
+        super().__init__(num_positions, embedding_dim)
+        self.weight = self._init_weight(self.weight)
+
+    @staticmethod
+    def _init_weight(out: nn.Parameter) -> nn.Parameter:
+        """
+        Features are not interleaved. The cos features are in the 2nd half of the vector. [dim // 2:]
+        """
+        n_pos, dim = out.shape
+        position_enc = np.array(
+            [
+                [pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)]
+                for pos in range(n_pos)
+            ]
+        )
+        # set early to avoid an error in pytorch-1.8+
+        out.requires_grad = False
+
+        sentinel = dim // 2 if dim % 2 == 0 else (dim // 2) + 1
+        out[:, 0:sentinel] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
+        out[:, sentinel:] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
+        out.detach_()
+        return out
+
+    @torch.no_grad()
+    def forward(
+        self, input_ids_shape: torch.Size, past_key_values_length: int = 0
+    ) -> torch.Tensor:
+        """`input_ids_shape` is expected to be [bsz x seqlen x ...]."""
+        _, seq_len = input_ids_shape[:2]
+        positions = torch.arange(
+            past_key_values_length,
+            past_key_values_length + seq_len,
+            dtype=torch.long,
+            device=self.weight.device,
+        )
+        return super().forward(positions)
