@@ -59,7 +59,7 @@ class ConvTSMixerModel(nn.Module):
         input_size: int,
         depth: int,
         dim: int,
-        patch_size: int,
+        patch_size: Tuple[int, int],
         kernel_size: int,
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,

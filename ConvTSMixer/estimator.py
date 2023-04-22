@@ -11,7 +11,7 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-from typing import List, Optional, Iterable, Dict, Any
+from typing import List, Optional, Iterable, Dict, Any, Tuple
 
 import torch
 import pytorch_lightning as pl
@@ -110,7 +110,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         input_size: int = 1,
         depth: int = 1,
         dim: int = 32,
-        patch_size: int = 7,
+        patch_size: Tuple[int, int] = (7, 7),
         kernel_size: int = 3,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,

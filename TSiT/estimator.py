@@ -11,7 +11,7 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-from typing import List, Optional, Iterable, Dict, Any
+from typing import List, Optional, Iterable, Dict, Any, Tuple
 
 import torch
 import pytorch_lightning as pl
@@ -111,7 +111,7 @@ class TSiTEstimator(PyTorchLightningEstimator):
         depth: int = 1,
         dim: int = 32,
         nhead: int = 4,
-        patch_size: int = 7,
+        patch_size: Tuple[int, int] = (7, 7),
         dim_feedforward: int = 32,
         dropout=0.1,
         activation="relu",

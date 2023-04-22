@@ -61,7 +61,7 @@ class TSiTModel(nn.Module):
         depth: int,
         dim: int,
         nhead: int,
-        patch_size: int,
+        patch_size: Tuple[int, int],
         dim_feedforward: int,
         dropout: float,
         activation: str,
@@ -99,8 +99,8 @@ class TSiTModel(nn.Module):
             self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
         )
 
-        self.patch_num = (self.context_length // patch_size) * (
-            self.input_size // patch_size
+        self.patch_num = (self.context_length // patch_size[0]) * (
+            self.input_size // patch_size[1]
         )
 
         self.positional_encoding = SinusoidalPositionalEmbedding(self.patch_num, dim)
@@ -119,7 +119,7 @@ class TSiTModel(nn.Module):
         encoder_norm = nn.LayerNorm(dim, eps=layer_norm_eps)
         self.encoder = nn.TransformerEncoder(encoder_layer, depth, encoder_norm)
 
-        self.pool = nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
+        self.pool = nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size))
 
         self.args_proj = self.distr_output.get_args_proj(dim)
 
