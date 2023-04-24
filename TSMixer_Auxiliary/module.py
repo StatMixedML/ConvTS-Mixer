@@ -26,6 +26,7 @@ class MLP_Time(nn.Module):
     """MLP for time embedding. According to the paper, the authors employ a single layer perceptron.
 
     :argument
+        - in_channels (int): input channels
         - ts_length (int): time series length
         - dropout (float): dropout rate
         - batch_norm (bool): whether to apply batch normalization
@@ -35,13 +36,15 @@ class MLP_Time(nn.Module):
     """
 
     def __init__(self,
+                 in_channels: int,
                  ts_length: int,
                  dropout: float = 0.1,
                  batch_norm: bool = True):
         super().__init__()
 
-        # BatchNorm1d is applied to the time dimension
-        self.batch_norm = nn.BatchNorm1d(ts_length) if batch_norm is True else None
+        # BatchNorm2d is applied to the time dimension
+        self.batch_norm2d = nn.BatchNorm2d(ts_length) if batch_norm is True else None
+        self.in_channels = in_channels
 
         # MLP for time embedding
         self.time_mlp = nn.Sequential(
@@ -51,7 +54,12 @@ class MLP_Time(nn.Module):
         )
 
     def forward(self, x):
-        x_norm = x if self.batch_norm is None else self.batch_norm(x)
+        if self.batch_norm2d is not None:
+            x_norm = x.unsqueeze(-1) if self.in_channels == 1 else x
+            x_norm = self.batch_norm2d(x_norm)
+            x_norm = x_norm.squeeze(-1) if self.in_channels == 1 else x_norm
+        else:
+            x_norm = x
         x_time = self.time_mlp(x_norm.transpose(1, 2)).transpose(1, 2)
         return x + x_time  # not sure if we need a residual connection here, the paper doesn't mention it.
 
@@ -76,8 +84,9 @@ class MLP_Feat(nn.Module):
                  batch_norm: bool = True):
         super().__init__()
 
-        # BatchNorm1d is applied to the feature dimension
-        self.batch_norm = nn.BatchNorm1d(in_channels) if batch_norm is True else None
+        # BatchNorm2d is applied to the feature dimension
+        self.batch_norm2d = nn.BatchNorm2d(in_channels) if batch_norm is True else None
+        self.in_channels = in_channels
 
         # MLPs for feature embedding
         self.feat_mlp1 = nn.Sequential(
@@ -92,9 +101,15 @@ class MLP_Feat(nn.Module):
         )
 
     def forward(self, x):
-        x_norm = x if self.batch_norm is None else self.batch_norm(x.transpose(1, 2)).transpose(1, 2)
+        if self.batch_norm2d is not None:
+            x_norm = x.transpose(1, 2).unsqueeze(-1) if self.in_channels == 1 else x.transpose(1, 2)
+            x_norm = self.batch_norm2d(x_norm)
+            x_norm = x_norm.transpose(1, 2).squeeze(-1) if self.in_channels == 1 else x_norm.transpose(1, 2)
+        else:
+            x_norm = x
         x_feat = self.feat_mlp1(x_norm)
         return x + self.feat_mlp2(x_feat)
+
 
 
 class Mixer_Block(nn.Module):
@@ -118,7 +133,7 @@ class Mixer_Block(nn.Module):
                  batch_norm: bool = True):
 
         super().__init__()
-        self.mlp_time = MLP_Time(ts_length, dropout, batch_norm)
+        self.mlp_time = MLP_Time(in_channels, ts_length, dropout, batch_norm)
         self.mlp_feat = MLP_Feat(in_channels, embed_dim, dropout, batch_norm)
 
     def forward(self, x):

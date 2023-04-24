@@ -102,9 +102,9 @@ class MLP_Feat(nn.Module):
 
     def forward(self, x):
         if self.batch_norm2d is not None:
-            x_norm = x.transpose(1,2).unsqueeze(-1) if self.in_channels == 1 else x.transpose(1,2)
+            x_norm = x.transpose(1, 2).unsqueeze(-1) if self.in_channels == 1 else x.transpose(1, 2)
             x_norm = self.batch_norm2d(x_norm)
-            x_norm = x_norm.transpose(1,2).squeeze(-1) if self.in_channels == 1 else x_norm.transpose(1,2)
+            x_norm = x_norm.transpose(1, 2).squeeze(-1) if self.in_channels == 1 else x_norm.transpose(1, 2)
         else:
             x_norm = x
         x_feat = self.feat_mlp1(x_norm)
