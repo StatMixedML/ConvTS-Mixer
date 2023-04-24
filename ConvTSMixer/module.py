@@ -190,6 +190,5 @@ class ConvTSMixerModel(nn.Module):
         distr_args = self.args_proj(
             torch.cat((nn_out_reshaped, future_time_feat_repeat), dim=-1)
         )
-        distr_args = self.args_proj(nn_out_reshaped)
 
         return distr_args, loc, scale
