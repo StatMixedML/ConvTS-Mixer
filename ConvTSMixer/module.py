@@ -116,7 +116,9 @@ class ConvTSMixerModel(nn.Module):
             nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size)),
         )
 
-        self.args_proj = self.distr_output.get_args_proj(dim)
+        self.args_proj = self.distr_output.get_args_proj(
+            dim + self.num_feat_dynamic_real
+        )
 
     @property
     def _number_of_features(self) -> int:
@@ -181,6 +183,12 @@ class ConvTSMixerModel(nn.Module):
         # [B, F, C, D] -> [B, F, P, D]
         nn_out = self.conv_mixer(conv_mixer_input)
         nn_out_reshaped = nn_out.transpose(1, -1).transpose(1, 2)
-        distr_args = self.args_proj(nn_out_reshaped)
+
+        future_time_feat_repeat = future_time_feat.unsqueeze(2).repeat_interleave(
+            dim=2, repeats=self.input_size
+        )
+        distr_args = self.args_proj(
+            torch.cat((nn_out_reshaped, future_time_feat_repeat), dim=-1)
+        )
 
         return distr_args, loc, scale
