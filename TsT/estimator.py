@@ -42,7 +42,7 @@ from gluonts.torch.model.estimator import PyTorchLightningEstimator
 from gluonts.torch.model.predictor import PyTorchPredictor
 from gluonts.torch.distributions import DistributionOutput, StudentTOutput
 
-from .lightning_module import TSiTLightningModule
+from .lightning_module import TsTLightningModule
 
 PREDICTION_INPUT_NAMES = [
     "feat_static_cat",
@@ -59,12 +59,12 @@ TRAINING_INPUT_NAMES = PREDICTION_INPUT_NAMES + [
 ]
 
 
-class TSiTEstimator(PyTorchLightningEstimator):
+class TsTEstimator(PyTorchLightningEstimator):
     """
-    An estimator training a TSiT model for forecasting.
+    An estimator training a TsT model for forecasting.
 
-    This class is uses the model defined in ``TSiTModel``,
-    and wraps it into a ``TSiTLightningModule`` for training
+    This class is uses the model defined in ``TsTModel``,
+    and wraps it into a ``TsTLightningModule`` for training
     purposes: training is performed using PyTorch Lightning's ``pl.Trainer``
     class.
 
@@ -239,7 +239,7 @@ class TSiTEstimator(PyTorchLightningEstimator):
         )
 
     def create_lightning_module(self) -> pl.LightningModule:
-        return TSiTLightningModule(
+        return TsTLightningModule(
             loss=self.loss,
             lr=self.lr,
             weight_decay=self.weight_decay,
@@ -265,7 +265,7 @@ class TSiTEstimator(PyTorchLightningEstimator):
             },
         )
 
-    def _create_instance_splitter(self, module: TSiTLightningModule, mode: str):
+    def _create_instance_splitter(self, module: TsTLightningModule, mode: str):
         assert mode in ["training", "validation", "test"]
 
         instance_sampler = {
@@ -289,7 +289,7 @@ class TSiTEstimator(PyTorchLightningEstimator):
     def create_training_data_loader(
         self,
         data: Dataset,
-        module: TSiTLightningModule,
+        module: TsTLightningModule,
         shuffle_buffer_length: Optional[int] = None,
         **kwargs,
     ) -> Iterable:
@@ -309,7 +309,7 @@ class TSiTEstimator(PyTorchLightningEstimator):
     def create_validation_data_loader(
         self,
         data: Dataset,
-        module: TSiTLightningModule,
+        module: TsTLightningModule,
         **kwargs,
     ) -> Iterable:
         instances = self._create_instance_splitter(module, "validation").apply(

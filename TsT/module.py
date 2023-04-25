@@ -32,9 +32,9 @@ class Residual(nn.Module):
         return self.fn(x) + x
 
 
-class TSiTModel(nn.Module):
+class TsTModel(nn.Module):
     """
-    Module implementing TSiT for forecasting.
+    Module implementing TsT for forecasting.
 
     Parameters
     ----------
