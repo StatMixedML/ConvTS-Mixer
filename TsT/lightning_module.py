@@ -17,21 +17,21 @@ import torch
 from gluonts.core.component import validated
 from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
 
-from .module import MLPMixerModel
+from .module import TsTModel
 
 
-class MLPMixerLightningModule(pl.LightningModule):
+class TsTLightningModule(pl.LightningModule):
     """
     A ``pl.LightningModule`` class that can be used to train a
-    ``MLPMixerModel`` with PyTorch Lightning.
+    ``TsTModel`` with PyTorch Lightning.
 
-    This is a thin layer around a (wrapped) ``MLPMixerModel`` object,
+    This is a thin layer around a (wrapped) ``TsTModel`` object,
     that exposes the methods to evaluate training and validation loss.
 
     Parameters
     ----------
     model
-        ``MLPMixerModel`` to be trained.
+        ``TsTModel`` to be trained.
     loss
         Loss function to be used for training,
         default: ``NegativeLogLikelihood()``.
@@ -51,7 +51,7 @@ class MLPMixerLightningModule(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.model = MLPMixerModel(**model_kwargs)
+        self.model = TsTModel(**model_kwargs)
         self.loss = loss
         self.lr = lr
         self.weight_decay = weight_decay

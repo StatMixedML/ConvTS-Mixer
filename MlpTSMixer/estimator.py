@@ -42,7 +42,7 @@ from gluonts.torch.model.estimator import PyTorchLightningEstimator
 from gluonts.torch.model.predictor import PyTorchPredictor
 from gluonts.torch.distributions import DistributionOutput, StudentTOutput
 
-from .lightning_module import MLPMixerLightningModule
+from .lightning_module import MlpTSMixerLightningModule
 
 PREDICTION_INPUT_NAMES = [
     "feat_static_cat",
@@ -59,12 +59,12 @@ TRAINING_INPUT_NAMES = PREDICTION_INPUT_NAMES + [
 ]
 
 
-class MLPMixerEstimator(PyTorchLightningEstimator):
+class MlpTSMixerEstimator(PyTorchLightningEstimator):
     """
-    An estimator training a MLPMixer model for forecasting.
+    An estimator training a MlpTSMixer model for forecasting.
 
-    This class is uses the model defined in ``MLPMixerModel``,
-    and wraps it into a ``MLPMixerLightningModule`` for training
+    This class is uses the model defined in ``MlpTSMixerModel``,
+    and wraps it into a ``MlpTSMixerLightningModule`` for training
     purposes: training is performed using PyTorch Lightning's ``pl.Trainer``
     class.
 
@@ -237,7 +237,7 @@ class MLPMixerEstimator(PyTorchLightningEstimator):
         )
 
     def create_lightning_module(self) -> pl.LightningModule:
-        return MLPMixerLightningModule(
+        return MlpTSMixerLightningModule(
             loss=self.loss,
             lr=self.lr,
             weight_decay=self.weight_decay,
@@ -262,7 +262,7 @@ class MLPMixerEstimator(PyTorchLightningEstimator):
             },
         )
 
-    def _create_instance_splitter(self, module: MLPMixerLightningModule, mode: str):
+    def _create_instance_splitter(self, module: MlpTSMixerLightningModule, mode: str):
         assert mode in ["training", "validation", "test"]
 
         instance_sampler = {
@@ -286,7 +286,7 @@ class MLPMixerEstimator(PyTorchLightningEstimator):
     def create_training_data_loader(
         self,
         data: Dataset,
-        module: MLPMixerLightningModule,
+        module: MlpTSMixerLightningModule,
         shuffle_buffer_length: Optional[int] = None,
         **kwargs,
     ) -> Iterable:
@@ -306,7 +306,7 @@ class MLPMixerEstimator(PyTorchLightningEstimator):
     def create_validation_data_loader(
         self,
         data: Dataset,
-        module: MLPMixerLightningModule,
+        module: MlpTSMixerLightningModule,
         **kwargs,
     ) -> Iterable:
         instances = self._create_instance_splitter(module, "validation").apply(

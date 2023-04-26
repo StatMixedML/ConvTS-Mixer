@@ -12,11 +12,10 @@
 # permissions and limitations under the License.
 
 from typing import Tuple, Optional
-from functools import partial
 
+import numpy as np
 import torch
 from torch import nn
-from einops.layers.torch import Rearrange
 
 from gluonts.core.component import validated
 from gluonts.model import Input, InputSpec
@@ -24,30 +23,18 @@ from gluonts.torch.scaler import StdScaler, MeanScaler, NOPScaler
 from gluonts.torch.distributions import StudentTOutput
 
 
-class PreNormResidual(nn.Module):
-    def __init__(self, dim, fn):
+class Residual(nn.Module):
+    def __init__(self, fn):
         super().__init__()
         self.fn = fn
-        self.norm = nn.LayerNorm(dim)
 
     def forward(self, x):
-        return self.fn(self.norm(x)) + x
+        return self.fn(x) + x
 
 
-def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
-    inner_dim = int(dim * expansion_factor)
-    return nn.Sequential(
-        dense(dim, inner_dim),
-        nn.GELU(),
-        nn.Dropout(dropout),
-        dense(inner_dim, dim),
-        nn.Dropout(dropout),
-    )
-
-
-class MLPMixerModel(nn.Module):
+class TsTModel(nn.Module):
     """
-    Module implementing MLPMixer for forecasting.
+    Module implementing TsT for forecasting.
 
     Parameters
     ----------
@@ -73,16 +60,17 @@ class MLPMixerModel(nn.Module):
         input_size: int,
         depth: int,
         dim: int,
+        nhead: int,
         patch_size: Tuple[int, int],
-        dropout: float = 0.1,
-        expansion_factor_token: float = 0.5,
-        expansion_factor: int = 4,
+        dim_feedforward: int,
+        dropout: float,
+        activation: str,
+        norm_first: bool,
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
         num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
-        batch_norm: bool = True,
     ) -> None:
         super().__init__()
 
@@ -93,6 +81,7 @@ class MLPMixerModel(nn.Module):
         self.prediction_length = prediction_length
         self.context_length = context_length
         self.input_size = input_size
+        self.dim = dim
         self.num_feat_static_real = num_feat_static_real
         self.num_feat_dynamic_real = num_feat_dynamic_real
         self.num_parallel_samples = num_parallel_samples
@@ -106,37 +95,31 @@ class MLPMixerModel(nn.Module):
 
         self.distr_output = distr_output
 
-        chan_first, chan_last = partial(nn.Conv1d, kernel_size=1), nn.Linear
-        num_patches = (self.context_length // patch_size[0]) * (
+        self.conv_proj = nn.Conv2d(
+            self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
+        )
+
+        self.patch_num = (self.context_length // patch_size[0]) * (
             self.input_size // patch_size[1]
         )
 
-        self.mlp_mixer = nn.Sequential(
-            nn.Conv2d(
-                self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
-            ),
-            Rearrange("b c w h -> b (h w) c"),
-            *[
-                nn.Sequential(
-                    PreNormResidual(
-                        dim,
-                        FeedForward(num_patches, expansion_factor, dropout, chan_first),
-                    ),
-                    PreNormResidual(
-                        dim,
-                        FeedForward(dim, expansion_factor_token, dropout, chan_last),
-                    ),
-                )
-                for i in range(depth)
-            ],
-            nn.LayerNorm(dim),
-            Rearrange(
-                "b (h w) c -> b c w h",
-                h=int(self.context_length / patch_size[0]),
-                w=int(self.input_size / patch_size[1]),
-            ),
-            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size)),
+        self.positional_encoding = SinusoidalPositionalEmbedding(self.patch_num, dim)
+
+        layer_norm_eps: float = 1e-5
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=dim,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            activation=activation,
+            layer_norm_eps=layer_norm_eps,
+            batch_first=True,
+            norm_first=norm_first,
         )
+        encoder_norm = nn.LayerNorm(dim, eps=layer_norm_eps)
+        self.encoder = nn.TransformerEncoder(encoder_layer, depth, encoder_norm)
+
+        self.pool = nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size))
 
         self.args_proj = self.distr_output.get_args_proj(
             dim + self.num_feat_dynamic_real
@@ -192,7 +175,7 @@ class MLPMixerModel(nn.Module):
             .repeat_interleave(dim=-1, repeats=self.input_size)
         )
 
-        conv_mixer_input = torch.cat(
+        proj_input = torch.cat(
             (
                 past_target_scaled,
                 log_abs_loc,
@@ -202,10 +185,19 @@ class MLPMixerModel(nn.Module):
             dim=1,
         )
 
-        # [B, F, C, D] -> [B, F, P, D]
-        nn_out = self.mlp_mixer(conv_mixer_input)
-        nn_out_reshaped = nn_out.transpose(1, -1).transpose(1, 2)
+        x = self.conv_proj(proj_input)
+        B, C, H, W = x.shape
 
+        x = x.reshape(B, self.dim, -1)
+        x = x.permute(0, 2, 1)  # [B, P, D]
+        embed_pos = self.positional_encoding(x.size())
+        enc_out = self.encoder(x + embed_pos)
+
+        nn_out = self.pool(enc_out.permute(0, 2, 1).reshape(B, C, H, W))
+
+        # [B, F, C, D] -> [B, F, P, D]
+
+        nn_out_reshaped = nn_out.transpose(1, -1).transpose(1, 2)
         future_time_feat_repeat = future_time_feat.unsqueeze(2).repeat_interleave(
             dim=2, repeats=self.input_size
         )
@@ -214,3 +206,46 @@ class MLPMixerModel(nn.Module):
         )
 
         return distr_args, loc, scale
+
+
+class SinusoidalPositionalEmbedding(nn.Embedding):
+    """This module produces sinusoidal positional embeddings of any length."""
+
+    def __init__(self, num_positions: int, embedding_dim: int) -> None:
+        super().__init__(num_positions, embedding_dim)
+        self.weight = self._init_weight(self.weight)
+
+    @staticmethod
+    def _init_weight(out: nn.Parameter) -> nn.Parameter:
+        """
+        Features are not interleaved. The cos features are in the 2nd half of the vector. [dim // 2:]
+        """
+        n_pos, dim = out.shape
+        position_enc = np.array(
+            [
+                [pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)]
+                for pos in range(n_pos)
+            ]
+        )
+        # set early to avoid an error in pytorch-1.8+
+        out.requires_grad = False
+
+        sentinel = dim // 2 if dim % 2 == 0 else (dim // 2) + 1
+        out[:, 0:sentinel] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
+        out[:, sentinel:] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
+        out.detach_()
+        return out
+
+    @torch.no_grad()
+    def forward(
+        self, input_ids_shape: torch.Size, past_key_values_length: int = 0
+    ) -> torch.Tensor:
+        """`input_ids_shape` is expected to be [bsz x seqlen x ...]."""
+        _, seq_len = input_ids_shape[:2]
+        positions = torch.arange(
+            past_key_values_length,
+            past_key_values_length + seq_len,
+            dtype=torch.long,
+            device=self.weight.device,
+        )
+        return super().forward(positions)
