@@ -158,8 +158,6 @@ class TSMixerModel(nn.Module):
         Number of time points to predict.
     context_length
         Number of time steps prior to prediction time that the model.
-    hidden_size
-        Size of hidden layers in the feed-forward network.
     distr_output
         Distribution to use to evaluate observations and sample predictions.
         Default: ``StudentTOutput()``.
@@ -176,7 +174,7 @@ class TSMixerModel(nn.Module):
         input_size: int,
         depth: int,
         dim: int,
-        hidden_size: int,
+        expansion_factor: int = 4,
         dropout: float = 0.1,
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
@@ -195,7 +193,6 @@ class TSMixerModel(nn.Module):
         self.prediction_length = prediction_length
         self.context_length = context_length
         self.input_size = input_size
-        self.hidden_size = hidden_size
         self.num_feat_static_real = num_feat_static_real
         self.num_feat_dynamic_real = num_feat_dynamic_real
         self.num_parallel_samples = num_parallel_samples
@@ -211,17 +208,19 @@ class TSMixerModel(nn.Module):
         self.mlp_x = MLPFeatMap(self._number_of_features, dim, dropout)
         self.mlp_z = MLPFeatMap(self.num_feat_dynamic_real, dim, dropout)
 
+        dim_xz = dim * 2  # since x and z are concatenated along the feature dimension
+
         self.mlp_mixer_block = nn.Sequential(
             Rearrange("b nf h ns -> b h ns nf"),
             *[
                 nn.Sequential(
                     PreNormResidual(
-                        dim*2, # since x and z are concatenated along the feature dimension
+                        dim_xz,
                         MLPTimeBlock(self.prediction_length, dropout)
                     ),
                     PreNormResidual(
-                        dim*2, # since x and z are concatenated along the feature dimension
-                        MLPFeatBlock(dim*2, dim*4, dropout)
+                        dim_xz,
+                        MLPFeatBlock(dim_xz, dim_xz*expansion_factor, dropout)
                     ),
                 )
                 for _ in range(depth)
@@ -229,7 +228,7 @@ class TSMixerModel(nn.Module):
             Rearrange("b h ns nf -> b nf h ns"),
         )
 
-        self.args_proj = self.distr_output.get_args_proj(dim*2) # since x and z are concatenated along the feature dimension
+        self.args_proj = self.distr_output.get_args_proj(dim_xz)
 
     @property
     def _number_of_features(self) -> int:

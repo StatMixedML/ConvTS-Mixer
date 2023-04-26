@@ -110,7 +110,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         input_size: int = 1,
         depth: int = 1,
         dim: int = 32,
-        hidden_size: int = 64,
+        expansion_factor: int = 4,
         dropout: float = 0.1,
         batch_norm: bool = True,
         scaling: Optional[str] = "mean",
@@ -157,7 +157,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         # somehow
         self.depth = depth
         self.dim = dim
-        self.hidden_size = hidden_size
+        self.expansion_factor = expansion_factor
         self.dropout = dropout
         self.batch_norm = batch_norm
         self.lr = lr
@@ -243,7 +243,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
                 "context_length": self.context_length,
                 "depth": self.depth,
                 "dim": self.dim,
-                "hidden_size": self.hidden_size,
+                "expansion_factor": self.expansion_factor,
                 "dropout": self.dropout,
                 "batch_norm": self.batch_norm,
                 "num_feat_dynamic_real": 1
