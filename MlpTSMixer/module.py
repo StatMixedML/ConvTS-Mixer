@@ -45,9 +45,9 @@ def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
     )
 
 
-class MLPMixerModel(nn.Module):
+class MlpTSMixerModel(nn.Module):
     """
-    Module implementing MLPMixer for forecasting.
+    Module implementing MlpTSMixer for forecasting.
 
     Parameters
     ----------
