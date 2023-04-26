@@ -98,7 +98,7 @@ class MLPFeatBlock(nn.Module):
         - dropout (float): dropout rate, default 0.1
 
     :return
-        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+        - x (tensor): output tensor
     """
     def __init__(self,
                  in_channels: int,
