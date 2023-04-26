@@ -66,6 +66,7 @@ class TsTModel(nn.Module):
         dropout: float,
         activation: str,
         norm_first: bool,
+        max_pool: bool = False,
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -119,7 +120,11 @@ class TsTModel(nn.Module):
         encoder_norm = nn.LayerNorm(dim, eps=layer_norm_eps)
         self.encoder = nn.TransformerEncoder(encoder_layer, depth, encoder_norm)
 
-        self.pool = nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size))
+        self.pool = (
+            nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size))
+            if max_pool
+            else nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
+        )
 
         self.args_proj = self.distr_output.get_args_proj(
             dim + self.num_feat_dynamic_real

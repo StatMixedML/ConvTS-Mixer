@@ -60,8 +60,6 @@ class MlpTSMixerModel(nn.Module):
     distr_output
         Distribution to use to evaluate observations and sample predictions.
         Default: ``StudentTOutput()``.
-    batch_norm
-        Whether to apply batch normalization. Default: ``False``.
     """
 
     @validated()
@@ -82,7 +80,7 @@ class MlpTSMixerModel(nn.Module):
         num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
-        batch_norm: bool = True,
+        max_pool: bool = False,
     ) -> None:
         super().__init__()
 
@@ -135,7 +133,9 @@ class MlpTSMixerModel(nn.Module):
                 h=int(self.context_length / patch_size[0]),
                 w=int(self.input_size / patch_size[1]),
             ),
-            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size)),
+            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
+            if not max_pool
+            else nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size)),
         )
 
         self.args_proj = self.distr_output.get_args_proj(

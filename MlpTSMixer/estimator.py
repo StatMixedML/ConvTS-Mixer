@@ -85,8 +85,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
     loss
         Loss to be optimized during training
         (default: ``NegativeLogLikelihood()``).
-    batch_norm
-        Whether to apply batch normalization.
     batch_size
         The size of the batches to be used for training (default: 32).
     num_batches_per_epoch
@@ -114,7 +112,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         dropout: float = 0.1,
         expansion_factor_token: float = 0.5,
         expansion_factor: int = 4,
-        batch_norm: bool = True,
+        max_pool: bool = False,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -163,7 +161,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         self.dropout = dropout
         self.expansion_factor_token = expansion_factor_token
         self.expansion_factor = expansion_factor
-        self.batch_norm = batch_norm
+        self.max_pool = max_pool
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -251,7 +249,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
                 "dropout": self.dropout,
                 "expansion_factor_token": self.expansion_factor_token,
                 "expansion_factor": self.expansion_factor,
-                "batch_norm": self.batch_norm,
                 "num_feat_dynamic_real": 1
                 + self.num_feat_dynamic_real
                 + len(self.time_features),
@@ -259,6 +256,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
+                "max_pool": self.max_pool,
             },
         )
 

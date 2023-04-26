@@ -85,8 +85,6 @@ class TsTEstimator(PyTorchLightningEstimator):
     loss
         Loss to be optimized during training
         (default: ``NegativeLogLikelihood()``).
-    batch_norm
-        Whether to apply batch normalization.
     batch_size
         The size of the batches to be used for training (default: 32).
     num_batches_per_epoch
@@ -116,6 +114,7 @@ class TsTEstimator(PyTorchLightningEstimator):
         dropout=0.1,
         activation="relu",
         norm_first: bool = False,
+        max_pool: bool = False,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -166,6 +165,7 @@ class TsTEstimator(PyTorchLightningEstimator):
         self.dropout = dropout
         self.activation = activation
         self.norm_first = norm_first
+        self.max_pool = max_pool
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -262,6 +262,7 @@ class TsTEstimator(PyTorchLightningEstimator):
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
+                "max_pool": self.max_pool,
             },
         )
 

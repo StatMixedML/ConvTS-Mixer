@@ -67,6 +67,7 @@ class ConvTSMixerModel(nn.Module):
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
         batch_norm: bool = True,
+        max_pool: bool = False,
     ) -> None:
         super().__init__()
 
@@ -113,7 +114,9 @@ class ConvTSMixerModel(nn.Module):
                 )
                 for i in range(depth)
             ],
-            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size)),
+            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
+            if not max_pool
+            else nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size)),
         )
 
         self.args_proj = self.distr_output.get_args_proj(

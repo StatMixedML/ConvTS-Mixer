@@ -113,6 +113,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         patch_size: Tuple[int, int] = (7, 7),
         kernel_size: int = 3,
         batch_norm: bool = True,
+        max_pool: bool = False,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -160,6 +161,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         self.patch_size = patch_size
         self.kernel_size = kernel_size
         self.batch_norm = batch_norm
+        self.max_pool = max_pool
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -253,6 +255,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
+                "max_pool": self.max_pool,
             },
         )
 
