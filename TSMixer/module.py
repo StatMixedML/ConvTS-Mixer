@@ -15,6 +15,8 @@ from typing import Tuple, Optional
 
 import torch
 from torch import nn
+from einops.layers.torch import Rearrange
+from einops import rearrange
 
 from gluonts.core.component import validated
 from gluonts.model import Input, InputSpec
@@ -22,128 +24,133 @@ from gluonts.torch.scaler import StdScaler, MeanScaler, NOPScaler
 from gluonts.torch.distributions import StudentTOutput
 
 
-class MLP_Time(nn.Module):
-    """MLP for time embedding. According to the paper, the authors employ a single layer perceptron.
+class PreNormResidual(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.fn = fn
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, x):
+        return self.fn(self.norm(x)) + x
+
+
+class CtxMap(nn.Module):
+    """
+    Module implementing the mapping from the context-length to the forecast length for TSMixer.
 
     :argument
-        - in_channels (int): input channels
-        - ts_length (int): time series length
-        - dropout (float): dropout rate
-        - batch_norm (bool): whether to apply batch normalization
+        - context_length (int): context length
+        - prediction_length (int): prediction length
 
     :return
-        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+        - x (tensor): output tensor
     """
-
-    def __init__(self,
-                 in_channels: int,
-                 ts_length: int,
-                 dropout: float = 0.1,
-                 batch_norm: bool = True):
+    def __init__(self, context_length: int, prediction_length: int):
         super().__init__()
+        self.context_length = context_length
+        self.prediction_length = prediction_length
 
-        # BatchNorm2d is applied to the time dimension
-        self.batch_norm2d = nn.BatchNorm2d(ts_length) if batch_norm is True else None
-        self.in_channels = in_channels
-
-        # MLP for time embedding
-        self.time_mlp = nn.Sequential(
-            nn.Linear(ts_length, ts_length),
-            nn.ReLU(),
-            nn.Dropout(dropout)
+        self.fc = nn.Sequential(
+            Rearrange("b nf h ns -> b nf ns h"),
+            nn.Linear(self.context_length, self.prediction_length),
+            Rearrange("b nf ns h -> b nf h ns"),
         )
 
     def forward(self, x):
-        if self.batch_norm2d is not None:
-            x_norm = x.unsqueeze(-1) if self.in_channels == 1 else x
-            x_norm = self.batch_norm2d(x_norm)
-            x_norm = x_norm.squeeze(-1) if self.in_channels == 1 else x_norm
-        else:
-            x_norm = x
-        x_time = self.time_mlp(x_norm.transpose(1, 2)).transpose(1, 2)
-        return x + x_time  # not sure if we need a residual connection here, the paper doesn't mention it.
+        out = self.fc(x)
+        return out
 
 
-class MLP_Feat(nn.Module):
+class MLPTimeBlock(nn.Module):
+    """MLP for time embedding.
+
+    :argument
+        - prediction_length (int): prediction length
+        - dropout (float): dropout rate
+
+    :return
+        - x (tensor): output tensor
+    """
+    def __init__(self,
+                 prediction_length: int,
+                 dropout: float = 0.1):
+        super().__init__()
+
+        self.time_mlp = nn.Sequential(
+            Rearrange("b h ns nf -> b ns nf h"),
+            nn.Linear(prediction_length, prediction_length),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            Rearrange("b ns nf h -> b h ns nf"),
+        )
+
+    def forward(self, x):
+        out = self.time_mlp(x)
+        return out
+
+
+class MLPFeatBlock(nn.Module):
     """MLPs for feature embedding.
 
     :argument
         - in_channels (int): input channels
-        - embed_dim (int): embedding dimension
+        - hidden_size (int): hidden size
         - dropout (float): dropout rate, default 0.1
-        - batch_norm (bool): whether to apply batch normalization
 
     :return
         - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
     """
-
     def __init__(self,
                  in_channels: int,
-                 embed_dim: int,
-                 dropout: float = 0.1,
-                 batch_norm: bool = True):
+                 hidden_size: int,
+                 dropout: float = 0.1):
         super().__init__()
 
-        # BatchNorm2d is applied to the feature dimension
-        self.batch_norm2d = nn.BatchNorm2d(in_channels) if batch_norm is True else None
-        self.in_channels = in_channels
-
-        # MLPs for feature embedding
-        self.feat_mlp1 = nn.Sequential(
-            nn.Linear(in_channels, embed_dim),
+        self.feat_mlp = nn.Sequential(
+            nn.Linear(in_channels, hidden_size),
             nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-
-        self.feat_mlp2 = nn.Sequential(
-            nn.Linear(embed_dim, in_channels),
-            nn.Dropout(dropout)
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, in_channels),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
-        if self.batch_norm2d is not None:
-            x_norm = x.transpose(1, 2).unsqueeze(-1) if self.in_channels == 1 else x.transpose(1, 2)
-            x_norm = self.batch_norm2d(x_norm)
-            x_norm = x_norm.transpose(1, 2).squeeze(-1) if self.in_channels == 1 else x_norm.transpose(1, 2)
-        else:
-            x_norm = x
-        x_feat = self.feat_mlp1(x_norm)
-        return x + self.feat_mlp2(x_feat)
+        out = self.feat_mlp(x)
+        return out
 
 
-class Mixer_Block(nn.Module):
-    """Mixer block.
+class MLPFeatMap(nn.Module):
+    """MLP on feature domain.
 
     :argument
         - in_channels (int): input channels
-        - ts_length (int): time series length
-        - embed_dim (int): embedding dimension
-        - dropout (float): dropout rate, default 0.1
-        - batch_norm (bool): whether to apply batch normalization
+        - hidden_size (int): hidden size
+        - dropout (float): dropout rate
 
     :return
-        - x (tensor): output tensor of shape (batch_size, ts_length, in_channels)
+        - x (tensor): output tensor
     """
     def __init__(self,
                  in_channels: int,
-                 ts_length: int,
-                 embed_dim: int,
-                 dropout: float = 0.1,
-                 batch_norm: bool = True):
-
+                 hidden_size: int,
+                 dropout: float = 0.1):
         super().__init__()
-        self.mlp_time = MLP_Time(in_channels, ts_length, dropout, batch_norm)
-        self.mlp_feat = MLP_Feat(in_channels, embed_dim, dropout, batch_norm)
+        self.fc = nn.Sequential(
+            Rearrange("b nf h ns -> b h ns nf"),
+            nn.Linear(in_channels, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            Rearrange("b h ns nf -> b nf h ns"),
+        )
 
     def forward(self, x):
-        x = self.mlp_time(x)
-        x = self.mlp_feat(x)
-        return x
+        out = self.fc(x)
+        return out
 
 
 class TSMixerModel(nn.Module):
     """
-    Module implementing TSMixer for forecasting.
+    Module implementingTSMixer for forecasting.
 
     Parameters
     ----------
@@ -151,26 +158,13 @@ class TSMixerModel(nn.Module):
         Number of time points to predict.
     context_length
         Number of time steps prior to prediction time that the model.
-    scaling
-        Whether to scale the target values. If "mean", the target values are scaled by the mean of the training set.
-        If "std", the target values are scaled by the standard deviation of the training set.
-        If "none", the target values are not scaled.
-    input_size
-        Number of input channels.
-    n_blocks
-        Number of mixer blocks
     hidden_size
         Size of hidden layers in the feed-forward network.
-    dropout
-        Dropout rate. Default: ``0.1``.
-    batch_norm
-        Whether to apply batch normalization.
     distr_output
         Distribution to use to evaluate observations and sample predictions.
         Default: ``StudentTOutput()``.
-
-    : References:
-        - Algorithm 1 in [TSMixer: An all-MLP Architecture for Time Series Forecasting] (https://arxiv.org/pdf/2303.06053.pdf)
+    batch_norm
+        Whether to apply batch normalization. Default: ``False``.
     """
 
     @validated()
@@ -180,57 +174,81 @@ class TSMixerModel(nn.Module):
         context_length: int,
         scaling: str,
         input_size: int,
-        n_blocks: int,
+        depth: int,
+        dim: int,
         hidden_size: int,
-        dropout: float,
-        batch_norm: bool = True,
+        dropout: float = 0.1,
+        num_feat_dynamic_real: int = 0,
+        num_feat_static_real: int = 0,
+        num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
+        num_parallel_samples: int = 100,
+        batch_norm: bool = False,
     ) -> None:
         super().__init__()
 
         assert prediction_length > 0
         assert context_length > 0
-        assert n_blocks > 0
+        assert depth > 0
 
+        self.distr_output = distr_output
         self.prediction_length = prediction_length
         self.context_length = context_length
         self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_feat_static_real = num_feat_static_real
+        self.num_feat_dynamic_real = num_feat_dynamic_real
+        self.num_parallel_samples = num_parallel_samples
 
         if scaling == "mean":
-            self.scaler = MeanScaler(keepdim=True)
+            self.scaler = MeanScaler(keepdim=True, dim=1)
         elif scaling == "std":
-            self.scaler = StdScaler(keepdim=True)
+            self.scaler = StdScaler(keepdim=True, dim=1)
         else:
-            self.scaler = NOPScaler(keepdim=True)
+            self.scaler = NOPScaler(keepdim=True, dim=1)
 
-        self.distr_output = distr_output
+        self.linear_map = CtxMap(self.context_length, self.prediction_length)
+        self.mlp_x = MLPFeatMap(self._number_of_features, dim, dropout)
+        self.mlp_z = MLPFeatMap(self.num_feat_dynamic_real, dim, dropout)
 
-        self.mixer_blocks = nn.Sequential(*[
-            Mixer_Block(input_size,
-                        context_length,
-                        hidden_size,
-                        dropout,
-                        batch_norm)
-            for _ in range(n_blocks)
-        ])
+        self.mlp_mixer_block = nn.Sequential(
+            Rearrange("b nf h ns -> b h ns nf"),
+            *[
+                nn.Sequential(
+                    PreNormResidual(
+                        dim*2, # since x and z are concatenated along the feature dimension
+                        MLPTimeBlock(self.prediction_length, dropout)
+                    ),
+                    PreNormResidual(
+                        dim*2, # since x and z are concatenated along the feature dimension
+                        MLPFeatBlock(dim*2, dim*4, dropout)
+                    ),
+                )
+                for _ in range(depth)
+            ],
+            Rearrange("b h ns nf -> b nf h ns"),
+        )
 
-        # MLP that maps the output of the mixer blocks (=context_length) to the prediction length
-        self.ts_map = nn.Linear(context_length, prediction_length)
+        self.args_proj = self.distr_output.get_args_proj(dim*2) # since x and z are concatenated along the feature dimension
 
-        # MLP that maps the input_size to a higher hidden size, needed for the distr_output (only works for input_size = 1)?
-        # self.hidden_map = nn.Linear(input_size, hidden_size)
-
-        # MLP that maps the hidden size from self.hidden_map to the distribution output
-        self.args_proj = self.distr_output.get_args_proj(input_size)
+    @property
+    def _number_of_features(self) -> int:
+        return (
+            self.num_feat_dynamic_real
+            + self.num_feat_static_real
+            + 3  # 1 + the log(loc) + log1p(scale)
+        )
 
     def describe_inputs(self, batch_size=1) -> InputSpec:
         return InputSpec(
             {
                 "past_target": Input(
-                    shape=(batch_size, self.context_length), dtype=torch.float
+                    shape=(batch_size, self.context_length, self.input_size),
+                    dtype=torch.float,
                 ),
                 "past_observed_values": Input(
-                    shape=(batch_size, self.context_length), dtype=torch.float
+                    shape=(batch_size, self.context_length, self.input_size),
+                    dtype=torch.float,
                 ),
             },
             torch.zeros,
@@ -247,11 +265,56 @@ class TSMixerModel(nn.Module):
         future_target: Optional[torch.Tensor] = None,
         future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
-
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
-        past_target_scaled = past_target_scaled.unsqueeze(-1) if self.input_size == 1 else past_target_scaled
-        nn_out = self.mixer_blocks(past_target_scaled)
-        nn_out = self.ts_map(nn_out.transpose(1, 2)).transpose(1, 2)
-        # nn_out = self.hidden_map(nn_out)
-        distr_args = self.args_proj(nn_out)
+        # [B, C, D], [B, D], [B, D]
+
+        # [B, 1, C, D]
+        past_target_scaled = past_target_scaled.unsqueeze(1)  # channel dim
+
+        log_abs_loc = loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
+        log_scale = scale.log().unsqueeze(1).expand_as(past_target_scaled)
+
+        # [B, C, F] -> [B, F, C, 1] -> [B, F, C, D]
+        past_time_feat = (
+            past_time_feat.transpose(2, 1)
+            .unsqueeze(-1)
+            .repeat_interleave(dim=-1, repeats=self.input_size)
+        )
+
+        # x: historical data of shape (batch_size, Cx, context_length, n_series)
+        # z: future time-varying features of shape (batch_size, Cz, prediction_length, n_series)
+        # s: static features of shape (batch_size, Cs, prediction_length, n_series)
+
+        x = torch.cat(
+            (
+                past_target_scaled,
+                log_abs_loc,
+                log_scale,
+                past_time_feat,
+            ),
+            dim=1,
+        )
+        # print(f"historical x: {x.shape}")
+
+        future_time_feat_repeat = future_time_feat.unsqueeze(2).repeat_interleave(
+            dim=2, repeats=self.input_size
+        )
+
+        z = rearrange(future_time_feat_repeat, "b h ns nf -> b nf h ns")
+
+        # z = torch.cat([future_time_feat_repeat, future_observed_values], dim=1)
+        # print(f"future_z: {z.shape}")
+        #
+        # s = feat_static_real.unsqueeze(1).repeat_interleave(dim=-1, repeats=self.input_size)
+        # print(f"static_s: {s.shape}")
+
+
+        x = self.linear_map(x)
+        x_prime = self.mlp_x(x)
+        z_prime = self.mlp_z(z)
+        y_prime = torch.cat([x_prime, z_prime], dim=1)
+        nn_out = self.mlp_mixer_block(y_prime) # self.mixer_blocks(y_prime, s)
+        nn_out_reshaped = rearrange(nn_out, "b nf h ns -> b h ns nf")
+        distr_args = self.args_proj(nn_out_reshaped)
+
         return distr_args, loc, scale

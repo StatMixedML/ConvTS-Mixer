@@ -11,7 +11,7 @@
 # express or implied. See the License for the specific language governing
 # permissions and limitations under the License.
 
-from typing import List, Optional, Iterable, Dict, Any
+from typing import List, Optional, Iterable, Dict, Any, Tuple
 
 import torch
 import pytorch_lightning as pl
@@ -22,7 +22,6 @@ from gluonts.dataset.field_names import FieldName
 from gluonts.dataset.loader import as_stacked_batches
 from gluonts.dataset.stat import calculate_dataset_statistics
 from gluonts.itertools import Cyclic
-from gluonts.model.forecast_generator import DistributionForecastGenerator
 from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
 from gluonts.transform import (
     Transformation,
@@ -41,10 +40,7 @@ from gluonts.transform import (
 from gluonts.time_feature import TimeFeature, time_features_from_frequency_str
 from gluonts.torch.model.estimator import PyTorchLightningEstimator
 from gluonts.torch.model.predictor import PyTorchPredictor
-from gluonts.torch.distributions import (
-    DistributionOutput,
-    StudentTOutput,
-)
+from gluonts.torch.distributions import DistributionOutput, StudentTOutput
 
 from .lightning_module import TSMixerLightningModule
 
@@ -112,9 +108,11 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         prediction_length: int,
         context_length: Optional[int] = None,
         input_size: int = 1,
-        n_blocks: int = 1,
-        hidden_size: int = 32,
+        depth: int = 1,
+        dim: int = 32,
+        hidden_size: int = 64,
         dropout: float = 0.1,
+        batch_norm: bool = True,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -126,7 +124,7 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         weight_decay: float = 1e-8,
         distr_output: DistributionOutput = StudentTOutput(),
         loss: DistributionLoss = NegativeLogLikelihood(),
-        batch_norm: bool = False,
+        num_parallel_samples: int = 100,
         batch_size: int = 32,
         num_batches_per_epoch: int = 50,
         trainer_kwargs: Optional[Dict[str, Any]] = None,
@@ -157,14 +155,16 @@ class TSMixerEstimator(PyTorchLightningEstimator):
         )
         # TODO find way to enforce same defaults to network and estimator
         # somehow
-        self.n_blocks = n_blocks
-        self.dropout = dropout
+        self.depth = depth
+        self.dim = dim
         self.hidden_size = hidden_size
+        self.dropout = dropout
+        self.batch_norm = batch_norm
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
+        self.num_parallel_samples = num_parallel_samples
         self.loss = loss
-        self.batch_norm = batch_norm
         self.batch_size = batch_size
         self.num_batches_per_epoch = num_batches_per_epoch
 
@@ -241,12 +241,18 @@ class TSMixerEstimator(PyTorchLightningEstimator):
                 "input_size": self.input_size,
                 "prediction_length": self.prediction_length,
                 "context_length": self.context_length,
-                "n_blocks": self.n_blocks,
+                "depth": self.depth,
+                "dim": self.dim,
                 "hidden_size": self.hidden_size,
                 "dropout": self.dropout,
+                "batch_norm": self.batch_norm,
+                "num_feat_dynamic_real": 1
+                + self.num_feat_dynamic_real
+                + len(self.time_features),
+                "num_feat_static_cat": self.num_feat_static_cat,
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
-                "batch_norm": self.batch_norm,
+                "num_parallel_samples": self.num_parallel_samples,
             },
         )
 
@@ -318,7 +324,6 @@ class TSMixerEstimator(PyTorchLightningEstimator):
             input_transform=transformation + prediction_splitter,
             input_names=PREDICTION_INPUT_NAMES,
             prediction_net=module,
-            forecast_generator=DistributionForecastGenerator(self.distr_output),
             batch_size=self.batch_size,
             prediction_length=self.prediction_length,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),

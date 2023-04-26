@@ -57,7 +57,14 @@ class TSMixerLightningModule(pl.LightningModule):
         self.weight_decay = weight_decay
 
     def forward(self, *args, **kwargs):
-        return self.model.forward(*args, **kwargs)
+        distr_args, loc, scale = self.model.forward(*args, **kwargs)
+        distr = self.model.distr_output.distribution(distr_args, loc, scale)
+        return distr.sample((self.model.num_parallel_samples,)).reshape(
+            -1,
+            self.model.num_parallel_samples,
+            self.model.prediction_length,
+            self.model.input_size,
+        )
 
     def _compute_loss(self, batch):
         past_target = batch["past_target"]
@@ -65,11 +72,14 @@ class TSMixerLightningModule(pl.LightningModule):
         target = batch["future_target"]
         observed_target = batch["future_observed_values"]
 
-        assert past_target.shape[-1] == self.model.context_length
-        assert target.shape[-1] == self.model.prediction_length
+        assert past_target.shape[1] == self.model.context_length
+        assert target.shape[1] == self.model.prediction_length
 
         distr_args, loc, scale = self.model(
-            past_target=past_target, past_observed_values=past_observed_values
+            past_target=past_target,
+            past_observed_values=past_observed_values,
+            past_time_feat=batch["past_time_feat"],
+            future_time_feat=batch["future_time_feat"],
         )
         distr = self.model.distr_output.distribution(distr_args, loc, scale)
 
