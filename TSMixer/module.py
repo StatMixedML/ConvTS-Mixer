@@ -266,15 +266,12 @@ class TSMixerModel(nn.Module):
         future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
-        # [B, C, D], [B, D], [B, D]
 
-        # [B, 1, C, D]
         past_target_scaled = past_target_scaled.unsqueeze(1)  # channel dim
 
         log_abs_loc = loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
         log_scale = scale.log().unsqueeze(1).expand_as(past_target_scaled)
 
-        # [B, C, F] -> [B, F, C, 1] -> [B, F, C, D]
         past_time_feat = (
             past_time_feat.transpose(2, 1)
             .unsqueeze(-1)
@@ -285,6 +282,11 @@ class TSMixerModel(nn.Module):
         # z: future time-varying features of shape (batch_size, Cz, prediction_length, n_series)
         # s: static features of shape (batch_size, Cs, prediction_length, n_series)
 
+        # b: batch
+        # h: fcst_h
+        # ns: n_series
+        # nf: n_features
+
         x = torch.cat(
             (
                 past_target_scaled,
@@ -294,20 +296,13 @@ class TSMixerModel(nn.Module):
             ),
             dim=1,
         )
-        # print(f"historical x: {x.shape}")
+
 
         future_time_feat_repeat = future_time_feat.unsqueeze(2).repeat_interleave(
             dim=2, repeats=self.input_size
         )
 
         z = rearrange(future_time_feat_repeat, "b h ns nf -> b nf h ns")
-
-        # z = torch.cat([future_time_feat_repeat, future_observed_values], dim=1)
-        # print(f"future_z: {z.shape}")
-        #
-        # s = feat_static_real.unsqueeze(1).repeat_interleave(dim=-1, repeats=self.input_size)
-        # print(f"static_s: {s.shape}")
-
 
         x = self.linear_map(x)
         x_prime = self.mlp_x(x)
