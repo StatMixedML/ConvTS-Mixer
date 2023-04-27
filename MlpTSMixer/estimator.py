@@ -113,6 +113,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         expansion_factor_token: float = 0.5,
         expansion_factor: int = 4,
         max_pool: bool = False,
+        ablation: bool = False,
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -162,6 +163,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         self.expansion_factor_token = expansion_factor_token
         self.expansion_factor = expansion_factor
         self.max_pool = max_pool
+        self.ablation = ablation
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -257,6 +259,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
                 "max_pool": self.max_pool,
+                "ablation": self.ablation,
             },
         )
 
