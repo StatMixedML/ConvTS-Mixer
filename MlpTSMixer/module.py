@@ -48,63 +48,6 @@ def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
     )
 
 
-# class CtxMap(nn.Module):
-#     """
-#     Borrowed from TSMixer. This module implements the mapping from the context-length to the forecast length. This
-#     is only needed for the ablation study.
-#
-#     :argument
-#         - context_length (int): context length
-#         - prediction_length (int): prediction length
-#
-#     :return
-#         - x (tensor): output tensor
-#     """
-#     def __init__(self, context_length: int, prediction_length: int):
-#         super().__init__()
-#         self.context_length = context_length
-#         self.prediction_length = prediction_length
-#
-#         self.fc = nn.Sequential(
-#             Rearrange("b nf h ns -> b nf ns h"),
-#             nn.Linear(self.context_length, self.prediction_length),
-#             Rearrange("b nf ns h -> b nf h ns"),
-#         )
-#
-#     def forward(self, x):
-#         out = self.fc(x)
-#         return out
-#
-#
-# class MLPFeatMap(nn.Module):
-#     """Borrowed from TSMixer. MLPs for feature embedding. This is only needed for the ablation study.
-#
-#     :argument
-#         - in_channels (int): input channels
-#         - hidden_size (int): hidden size
-#         - dropout (float): dropout rate
-#
-#     :return
-#         - x (tensor): output tensor
-#     """
-#     def __init__(self,
-#                  in_channels: int,
-#                  hidden_size: int,
-#                  dropout: float = 0.1):
-#         super().__init__()
-#         self.fc = nn.Sequential(
-#             Rearrange("b nf h ns -> b h ns nf"),
-#             nn.Linear(in_channels, hidden_size),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             Rearrange("b h ns nf -> b nf h ns"),
-#         )
-#
-#     def forward(self, x):
-#         out = self.fc(x)
-#         return out
-
-
 class MlpTSMixerModel(nn.Module):
     """
     Module implementing MlpTSMixer for forecasting.
