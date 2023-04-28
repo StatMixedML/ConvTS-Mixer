@@ -164,8 +164,8 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         self.expansion_factor_token = expansion_factor_token
         self.expansion_factor = expansion_factor
         self.ablation = ablation
-        self.patch_reverse_mapping_layer = patch_reverse_mapping_layer,
-        self.pooling_type = pooling_type,
+        self.patch_reverse_mapping_layer = patch_reverse_mapping_layer
+        self.pooling_type = pooling_type
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
