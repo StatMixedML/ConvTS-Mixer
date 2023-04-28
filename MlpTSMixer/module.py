@@ -27,6 +27,7 @@ from gluonts.torch.distributions import StudentTOutput
 # Only needed for the ablation study
 from TSMixer.module import CtxMap, MLPFeatMap
 
+
 class PreNormResidual(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -48,6 +49,126 @@ def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
     )
 
 
+class ConvPatchMap(nn.Module):
+    """
+    Module implementing ConvTransposeAndReshape for the reverse mapping of the patch-tensor.
+
+    Parameters
+    ----------
+    dim : int
+        Dimension of the embeddings.
+    patch_size : Tuple[int, int]
+        Patch size.
+    prediction_length : int
+        Number of time points to predict.
+    input_size : int
+        Input size.
+
+    Returns
+    -------
+    x : torch.Tensor
+    """
+    def __init__(self,
+                 dim,
+                 patch_size,
+                 prediction_length,
+                 input_size):
+        super().__init__()
+        self.dim = dim
+        self.prediction_length = prediction_length
+        self.input_size = input_size
+        self.conv_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=patch_size, stride=patch_size, output_padding=(1, 1))
+
+    def forward(self, x):
+        batch_size = x.shape[0]
+
+        print(x.shape)
+
+
+        output_size = (batch_size, self.dim, self.prediction_length, self.input_size)
+        x = self.conv_transpose(x.transpose(-2, -1), output_size=output_size)
+        return x
+
+    # x_rearrange_cnn = x_out_rearrange.transpose(-2, -1)
+    # conv_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=patch_size, stride=patch_size, output_padding=(1, 1))
+    # out_cnn = conv_transpose(x_rearrange_cnn, output_size=(-1, dim, prediction_length, n_series))
+    # out_cnn.shape
+
+
+class MLPPatchMap(nn.Module):
+    """
+    Module implementing MLPMap for the reverse mapping of the patch-tensor.
+
+    Parameters
+    ----------
+    patch_size : Tuple[int, int]
+        Patch size.
+    context_length : int
+        Context length.
+    prediction_length : int
+        Number of time points to predict.
+    input_size : int
+        Input size.
+
+    Returns
+    -------
+    x : torch.Tensor
+    """
+    def __init__(self,
+                 patch_size: int,
+                 context_length: int,
+                 prediction_length: int,
+                 input_size: int):
+            super().__init__()
+            p1 = int(context_length / patch_size[0])
+            p2 = int(input_size / patch_size[1])
+            self.fc = nn.Sequential(
+                Rearrange("b c w h -> b c (w h)"),
+                nn.Linear(p1 * p2, prediction_length * input_size),
+                Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+            )
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+def RevMapLayer(layer_type: str,
+                pooling_type: str,
+                dim: int,
+                patch_size: int,
+                context_length: int,
+                prediction_length: int,
+                input_size: int):
+    """
+    Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
+
+    :argument
+        layer_type: str = "pooling" or "mlp" or "conv_transpose"
+        pooling_type: str = "max" or "mean"
+        dim: int = dimension of the embeddings
+        patch_size: Tuple[int, int] = patch size
+        prediction_length: int = prediction length
+        context_length: int = context length
+        input_size: int = input size
+
+    :returns
+        nn.Module = mapping layer
+
+    """
+    if layer_type == "pooling":
+        if pooling_type == "max":
+            return nn.AdaptiveMaxPool2d((prediction_length, input_size))
+        elif pooling_type == "mean":
+            return nn.AdaptiveAvgPool2d((prediction_length, input_size))
+    elif layer_type == "mlp":
+        return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
+    # elif layer_type == "conv_transpose":
+    #     return ConvPatchMap(dim, patch_size, prediction_length, input_size)
+    else:
+        raise ValueError("Invalid layer type: {}".format(layer_type))
+
+
 class MlpTSMixerModel(nn.Module):
     """
     Module implementing MlpTSMixer for forecasting.
@@ -65,6 +186,11 @@ class MlpTSMixerModel(nn.Module):
         Default: ``StudentTOutput()``.
     ablation
         Whether to use the ablation study version of the model. Default: ``False``.
+    patch_reverse_mapping_layer
+        Type of mapping layer to use for mapping the patch-tensor to [b nf h ns] . Default: ``pooling``.
+    pooling_type
+        If mapping_layer_type == "pooling", specifies the type of pooling to use for mapping the patch-tensor to
+        [b nf h ns] . Default: ``max``.
     """
 
     @validated()
@@ -85,8 +211,9 @@ class MlpTSMixerModel(nn.Module):
         num_feat_static_cat: int = 0,
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
-        max_pool: bool = False,
         ablation: bool = False,
+        patch_reverse_mapping_layer: str = "pooling",
+        pooling_type: str = "max",
     ) -> None:
         super().__init__()
 
@@ -142,9 +269,15 @@ class MlpTSMixerModel(nn.Module):
                     h=int(self.context_length / patch_size[0]),
                     w=int(self.input_size / patch_size[1]),
                 ),
-                nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
-                if not max_pool
-                else nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size)),
+                RevMapLayer(
+                    layer_type=patch_reverse_mapping_layer,
+                    pooling_type=pooling_type,
+                    dim=dim,
+                    patch_size=patch_size,
+                    prediction_length=self.prediction_length,
+                    context_length=self.context_length,
+                    input_size=self.input_size,
+                ),
             )
 
             self.args_proj = self.distr_output.get_args_proj(
@@ -167,7 +300,6 @@ class MlpTSMixerModel(nn.Module):
             n_feat_xz = dim * 2  # since x and z are concatenated along the feature dimension
             dim_xz = n_feat_xz * 2  # expansion factor for the hidden layer in the patch conv2d
             expansion_factor_ablation = expansion_factor/2
-
             num_patches = (self.prediction_length // patch_size[0]) * (self.input_size // patch_size[1])
 
             self.mlp_mixer = nn.Sequential(
@@ -197,9 +329,15 @@ class MlpTSMixerModel(nn.Module):
                     h=int(self.prediction_length / patch_size[0]),
                     w=int(self.input_size / patch_size[1]),
                 ),
-                nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
-                if not max_pool
-                else nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size)),
+                RevMapLayer(
+                    layer_type=patch_reverse_mapping_layer,
+                    pooling_type=pooling_type,
+                    dim=dim_xz,
+                    patch_size=patch_size,
+                    prediction_length=self.prediction_length,
+                    context_length=self.prediction_length,
+                    input_size=self.input_size,
+                ),
             )
 
             self.args_proj = self.distr_output.get_args_proj(dim_xz)

@@ -112,8 +112,9 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         dropout: float = 0.1,
         expansion_factor_token: float = 0.5,
         expansion_factor: int = 4,
-        max_pool: bool = False,
         ablation: bool = False,
+        patch_reverse_mapping_layer: str = "pooling",
+        pooling_type: str = "max",
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -162,8 +163,9 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         self.dropout = dropout
         self.expansion_factor_token = expansion_factor_token
         self.expansion_factor = expansion_factor
-        self.max_pool = max_pool
         self.ablation = ablation
+        self.patch_reverse_mapping_layer = patch_reverse_mapping_layer,
+        self.pooling_type = pooling_type,
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -258,8 +260,9 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
-                "max_pool": self.max_pool,
                 "ablation": self.ablation,
+                "patch_reverse_mapping_layer": self.patch_reverse_mapping_layer,
+                "pooling_type": self.pooling_type,
             },
         )
 
