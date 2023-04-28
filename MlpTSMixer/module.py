@@ -51,7 +51,7 @@ def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
 
 class Conv2dPatchMap(nn.Module):
     """
-    Conv2d module for the reverse mapping of the patch-tensor.
+    ConvTranspose2d module for the reverse mapping of the patch-tensor.
 
     Parameters
     ----------
