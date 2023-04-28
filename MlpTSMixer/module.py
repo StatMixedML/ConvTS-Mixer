@@ -49,9 +49,9 @@ def FeedForward(dim, expansion_factor=4, dropout=0.0, dense=nn.Linear):
     )
 
 
-class ConvPatchMap(nn.Module):
+class Conv2dPatchMap(nn.Module):
     """
-    Module implementing ConvTransposeAndReshape for the reverse mapping of the patch-tensor.
+    Conv2d module for the reverse mapping of the patch-tensor.
 
     Parameters
     ----------
@@ -59,6 +59,8 @@ class ConvPatchMap(nn.Module):
         Dimension of the embeddings.
     patch_size : Tuple[int, int]
         Patch size.
+    context_length : int
+
     prediction_length : int
         Number of time points to predict.
     input_size : int
@@ -71,28 +73,72 @@ class ConvPatchMap(nn.Module):
     def __init__(self,
                  dim,
                  patch_size,
+                 context_length,
                  prediction_length,
                  input_size):
         super().__init__()
         self.dim = dim
         self.prediction_length = prediction_length
         self.input_size = input_size
-        self.conv_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=patch_size, stride=patch_size, output_padding=(1, 1))
+
+        p1 = int(context_length / patch_size[0])
+        p2 = int(input_size / patch_size[1])
+
+        stride_h = 1
+        k_h = int((prediction_length / stride_h) - p2 + 1)
+
+        stride_w = 1
+        k_w = int((input_size / stride_w) - p1 + 1)
+
+        self.conv2d_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=(k_h, k_w), stride=(stride_h, stride_w))
+
+    def forward(self, x):
+        x = self.conv2d_transpose(x)
+        return x
+
+
+class Conv1dPatchMap(nn.Module):
+    """
+    Conv1d module for the reverse mapping of the patch-tensor.
+
+    Parameters
+    ----------
+    dim : int
+        Dimension of the embeddings.
+    patch_size : Tuple[int, int]
+        Patch size.
+    context_length : int
+        Context length.
+    prediction_length : int
+        Number of time points to predict.
+    input_size : int
+        Input size.
+
+    Returns
+    -------
+    x : torch.Tensor
+    """
+    def __init__(self,
+                 dim: int,
+                 patch_size: int,
+                 context_length: int,
+                 prediction_length: int,
+                 input_size: int):
+        super().__init__()
+        p1 = int(context_length / patch_size[0])
+        p2 = int(input_size / patch_size[1])
+
+        self.dim = dim
+        self.prediction_length = prediction_length
+        self.input_size = input_size
+        self.conv1d = nn.Conv1d(p1*p2*dim, dim*prediction_length*input_size, kernel_size=1, stride=1)
+
 
     def forward(self, x):
         batch_size = x.shape[0]
-
-        print(x.shape)
-
-
-        output_size = (batch_size, self.dim, self.prediction_length, self.input_size)
-        x = self.conv_transpose(x.transpose(-2, -1), output_size=output_size)
+        x = x.reshape(batch_size, -1).unsqueeze(-1)
+        x = self.conv1d(x).reshape(batch_size, self.dim, self.prediction_length, self.input_size)
         return x
-
-    # x_rearrange_cnn = x_out_rearrange.transpose(-2, -1)
-    # conv_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=patch_size, stride=patch_size, output_padding=(1, 1))
-    # out_cnn = conv_transpose(x_rearrange_cnn, output_size=(-1, dim, prediction_length, n_series))
-    # out_cnn.shape
 
 
 class MLPPatchMap(nn.Module):
@@ -144,7 +190,7 @@ def RevMapLayer(layer_type: str,
     Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
 
     :argument
-        layer_type: str = "pooling" or "mlp" or "conv_transpose"
+        layer_type: str = "pooling" or "mlp" or "conv1d"
         pooling_type: str = "max" or "mean"
         dim: int = dimension of the embeddings
         patch_size: Tuple[int, int] = patch size
@@ -163,8 +209,10 @@ def RevMapLayer(layer_type: str,
             return nn.AdaptiveAvgPool2d((prediction_length, input_size))
     elif layer_type == "mlp":
         return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
-    # elif layer_type == "conv_transpose":
-    #     return ConvPatchMap(dim, patch_size, prediction_length, input_size)
+    elif layer_type == "conv1d":
+        return Conv1dPatchMap(dim, patch_size, context_length, prediction_length, input_size)
+    elif layer_type == "conv2d":
+        return Conv2dPatchMap(dim, patch_size, context_length, prediction_length, input_size)
     else:
         raise ValueError("Invalid layer type: {}".format(layer_type))
 
