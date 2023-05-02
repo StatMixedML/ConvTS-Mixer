@@ -15,21 +15,14 @@ class MLP_Feat(nn.Module):
     :return
         - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim)
     """
-    def __init__(self,
-                 n_feat: int,
-                 embed_dim: int,
-                 dropout: float = 0.1):
+
+    def __init__(self, n_feat: int, embed_dim: int, dropout: float = 0.1):
         super().__init__()
         self.mlp1 = nn.Sequential(
-            nn.Linear(n_feat, embed_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout)
+            nn.Linear(n_feat, embed_dim), nn.ReLU(), nn.Dropout(dropout)
         )
 
-        self.mlp2 = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim),
-            nn.Dropout(dropout)
-        )
+        self.mlp2 = nn.Sequential(nn.Linear(embed_dim, embed_dim), nn.Dropout(dropout))
 
         # For cases where the input and the output dimensions are different, we apply an additional
         # linear transformation on the residual connection.
@@ -59,12 +52,15 @@ class Mixer_Block(nn.Module):
     :return
         - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim*2)
     """
-    def __init__(self,
-                 n_feat: int,
-                 n_static_feat: int,
-                 fcst_h: int,
-                 embed_dim: int,
-                 dropout: float = 0.1):
+
+    def __init__(
+        self,
+        n_feat: int,
+        n_static_feat: int,
+        fcst_h: int,
+        embed_dim: int,
+        dropout: float = 0.1,
+    ):
         super().__init__()
 
         self.mlp_time = MLP_Time_Block(fcst_h, dropout)
@@ -73,7 +69,9 @@ class Mixer_Block(nn.Module):
 
         # We apply an additional linear transformation on the output of MLP_Feat_Block. Otherwise, each block increase
         # the output dimension by embed_dim
-        self.projector = nn.Linear(n_feat, embed_dim*2)  # check again if this is necessary.
+        self.projector = nn.Linear(
+            n_feat, embed_dim * 2
+        )  # check again if this is necessary.
 
     def forward(self, x, s):
         x = self.mlp_time(x)
@@ -96,22 +94,23 @@ class Mixer(nn.Module):
     :return
         - x (tensor): output tensor of shape (batch_size, fcst_h, embed_dim*2)
     """
-    def __init__(self,
-                 n_feat: int,
-                 n_static_feat: int,
-                 fcst_h: int,
-                 embed_dim: int,
-                 num_blocks: int,
-                 dropout: float = 0.1):
+
+    def __init__(
+        self,
+        n_feat: int,
+        n_static_feat: int,
+        fcst_h: int,
+        embed_dim: int,
+        num_blocks: int,
+        dropout: float = 0.1,
+    ):
         super(Mixer, self).__init__()
-        self.mixer_blocks = nn.ModuleList([
-            Mixer_Block(n_feat,
-                        n_static_feat,
-                        fcst_h,
-                        embed_dim,
-                        dropout)
-            for _ in range(num_blocks)
-        ])
+        self.mixer_blocks = nn.ModuleList(
+            [
+                Mixer_Block(n_feat, n_static_feat, fcst_h, embed_dim, dropout)
+                for _ in range(num_blocks)
+            ]
+        )
 
     def forward(self, x, s):
         for mixer_block in self.mixer_blocks:
@@ -139,16 +138,19 @@ class TS_Mixer_auxiliary(nn.Module):
     source:
         - Algorithm 2 in [TSMixer: An all-MLP Architecture for Time Series Forecasting] (https://arxiv.org/pdf/2303.06053.pdf)
     """
-    def __init__(self,
-                 n_ts: int,
-                 n_static_feat: int,
-                 n_dynamic_feat: int,
-                 ts_length: int,
-                 embed_dim: int,
-                 num_blocks: int,
-                 fcst_h: int,
-                 out_dim: int,
-                 dropout: float = 0.1):
+
+    def __init__(
+        self,
+        n_ts: int,
+        n_static_feat: int,
+        n_dynamic_feat: int,
+        ts_length: int,
+        embed_dim: int,
+        num_blocks: int,
+        fcst_h: int,
+        out_dim: int,
+        dropout: float = 0.1,
+    ):
         super().__init__()
 
         #  Number of features for sx and sz
@@ -165,16 +167,17 @@ class TS_Mixer_auxiliary(nn.Module):
         self.mlp_z = MLP_Feat(n_feat_sz, embed_dim, dropout)
 
         # Mixer blocks
-        self.mixer_blocks = Mixer(embed_dim*3, n_static_feat, fcst_h, embed_dim, num_blocks, dropout)
+        self.mixer_blocks = Mixer(
+            embed_dim * 3, n_static_feat, fcst_h, embed_dim, num_blocks, dropout
+        )
 
         # MLP that maps the output of the mixer blocks to the output dimension
-        self.mlp_out = nn.Linear(embed_dim*2, out_dim)
+        self.mlp_out = nn.Linear(embed_dim * 2, out_dim)
 
         # Layer normalization
         self.layer_norm = nn.LayerNorm(out_dim)
 
     def forward(self, x, z, s):
-
         # X: historical data of shape (batch_size, ts_length, Cx)
         # Z: future time-varying features of shape (batch_size, fcst_h, Cz)
         # S: static features of shape (batch_size, fcst_h, Cs)

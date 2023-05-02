@@ -56,25 +56,17 @@ def get_lags_for_frequency(
     # previous cycle.
     def _make_lags_for_second(multiple, num_cycles=3):
         # We use previous ``num_cycles`` hours to generate lags
-        return [
-            _make_lags(k * 60 // multiple, 2) for k in range(1, num_cycles + 1)
-        ]
+        return [_make_lags(k * 60 // multiple, 2) for k in range(1, num_cycles + 1)]
 
     def _make_lags_for_minute(multiple, num_cycles=3):
         # We use previous ``num_cycles`` hours to generate lags
-        return [
-            _make_lags(k * 60 // multiple, 2) for k in range(1, num_cycles + 1)
-        ]
+        return [_make_lags(k * 60 // multiple, 2) for k in range(1, num_cycles + 1)]
 
     def _make_lags_for_hour(multiple, num_cycles=7):
         # We use previous ``num_cycles`` days to generate lags
-        return [
-            _make_lags(k * 24 // multiple, 1) for k in range(1, num_cycles + 1)
-        ]
+        return [_make_lags(k * 24 // multiple, 1) for k in range(1, num_cycles + 1)]
 
-    def _make_lags_for_day(
-        multiple, num_cycles=4, days_in_week=7, days_in_month=30
-    ):
+    def _make_lags_for_day(multiple, num_cycles=4, days_in_week=7, days_in_month=30):
         # We use previous ``num_cycles`` weeks to generate lags
         # We use the last month (in addition to 4 weeks) to generate lag.
         return [
@@ -85,15 +77,13 @@ def get_lags_for_frequency(
     def _make_lags_for_week(multiple, num_cycles=3):
         # We use previous ``num_cycles`` years to generate lags
         # Additionally, we use previous 4, 8, 12 weeks
-        return [
-            _make_lags(k * 52 // multiple, 1) for k in range(1, num_cycles + 1)
-        ] + [[4 // multiple, 8 // multiple, 12 // multiple]]
+        return [_make_lags(k * 52 // multiple, 1) for k in range(1, num_cycles + 1)] + [
+            [4 // multiple, 8 // multiple, 12 // multiple]
+        ]
 
     def _make_lags_for_month(multiple, num_cycles=3):
         # We use previous ``num_cycles`` years to generate lags
-        return [
-            _make_lags(k * 12 // multiple, 1) for k in range(1, num_cycles + 1)
-        ]
+        return [_make_lags(k * 12 // multiple, 1) for k in range(1, num_cycles + 1)]
 
     # multiple, granularity = get_granularity(freq_str)
     offset = to_offset(freq_str)
@@ -112,9 +102,7 @@ def get_lags_for_frequency(
     elif offset_name == "W":
         lags = _make_lags_for_week(offset.n)
     elif offset_name == "D":
-        lags = _make_lags_for_day(offset.n) + _make_lags_for_week(
-            offset.n / 7.0
-        )
+        lags = _make_lags_for_day(offset.n) + _make_lags_for_week(offset.n / 7.0)
     elif offset_name == "B":
         lags = _make_lags_for_day(
             offset.n, days_in_week=5, days_in_month=22
@@ -144,9 +132,7 @@ def get_lags_for_frequency(
         raise Exception("invalid frequency")
 
     # flatten lags list and filter
-    lags = [
-        int(lag) for sub_list in lags for lag in sub_list if 7 < lag <= lag_ub
-    ]
+    lags = [int(lag) for sub_list in lags for lag in sub_list if 7 < lag <= lag_ub]
     lags = [1] + sorted(list(set(lags)))
 
     return lags[:num_lags]
@@ -304,9 +290,7 @@ class LagTSTModel(nn.Module):
         past_observed_values: torch.Tensor,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
         # scale the input
-        past_target_scaled, loc, scale = self.scaler(
-            past_target, past_observed_values
-        )
+        past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
 
         lags = lagged_sequence_values(
             self.lags_seq,

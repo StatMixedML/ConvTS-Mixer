@@ -205,9 +205,7 @@ class LagTSTEstimator(PyTorchLightningEstimator):
             },
         )
 
-    def _create_instance_splitter(
-        self, module: LagTSTLightningModule, mode: str
-    ):
+    def _create_instance_splitter(self, module: LagTSTLightningModule, mode: str):
         assert mode in ["training", "validation", "test"]
 
         instance_sampler = {
@@ -270,12 +268,8 @@ class LagTSTEstimator(PyTorchLightningEstimator):
             input_transform=transformation + prediction_splitter,
             input_names=PREDICTION_INPUT_NAMES,
             prediction_net=module,
-            forecast_generator=DistributionForecastGenerator(
-                self.distr_output
-            ),
+            forecast_generator=DistributionForecastGenerator(self.distr_output),
             batch_size=self.batch_size,
             prediction_length=self.prediction_length,
-            device=torch.device(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            ),
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         )

@@ -70,12 +70,8 @@ class Conv2dPatchMap(nn.Module):
     -------
     x : torch.Tensor
     """
-    def __init__(self,
-                 dim,
-                 patch_size,
-                 context_length,
-                 prediction_length,
-                 input_size):
+
+    def __init__(self, dim, patch_size, context_length, prediction_length, input_size):
         super().__init__()
         self.dim = dim
         self.prediction_length = prediction_length
@@ -90,7 +86,9 @@ class Conv2dPatchMap(nn.Module):
         stride_w = 1
         k_w = int((input_size / stride_w) - p1 + 1)
 
-        self.conv2d_transpose = nn.ConvTranspose2d(dim, dim, kernel_size=(k_h, k_w), stride=(stride_h, stride_w))
+        self.conv2d_transpose = nn.ConvTranspose2d(
+            dim, dim, kernel_size=(k_h, k_w), stride=(stride_h, stride_w)
+        )
 
     def forward(self, x):
         x = self.conv2d_transpose(x)
@@ -118,12 +116,15 @@ class Conv1dPatchMap(nn.Module):
     -------
     x : torch.Tensor
     """
-    def __init__(self,
-                 dim: int,
-                 patch_size: int,
-                 context_length: int,
-                 prediction_length: int,
-                 input_size: int):
+
+    def __init__(
+        self,
+        dim: int,
+        patch_size: int,
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
+    ):
         super().__init__()
         p1 = int(context_length / patch_size[0])
         p2 = int(input_size / patch_size[1])
@@ -131,13 +132,16 @@ class Conv1dPatchMap(nn.Module):
         self.dim = dim
         self.prediction_length = prediction_length
         self.input_size = input_size
-        self.conv1d = nn.Conv1d(p1*p2*dim, dim*prediction_length*input_size, kernel_size=1, stride=1)
-
+        self.conv1d = nn.Conv1d(
+            p1 * p2 * dim, dim * prediction_length * input_size, kernel_size=1, stride=1
+        )
 
     def forward(self, x):
         batch_size = x.shape[0]
         x = x.reshape(batch_size, -1).unsqueeze(-1)
-        x = self.conv1d(x).reshape(batch_size, self.dim, self.prediction_length, self.input_size)
+        x = self.conv1d(x).reshape(
+            batch_size, self.dim, self.prediction_length, self.input_size
+        )
         return x
 
 
@@ -160,32 +164,37 @@ class MLPPatchMap(nn.Module):
     -------
     x : torch.Tensor
     """
-    def __init__(self,
-                 patch_size: int,
-                 context_length: int,
-                 prediction_length: int,
-                 input_size: int):
-            super().__init__()
-            p1 = int(context_length / patch_size[0])
-            p2 = int(input_size / patch_size[1])
-            self.fc = nn.Sequential(
-                Rearrange("b c w h -> b c (w h)"),
-                nn.Linear(p1 * p2, prediction_length * input_size),
-                Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
-            )
+
+    def __init__(
+        self,
+        patch_size: int,
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
+    ):
+        super().__init__()
+        p1 = int(context_length / patch_size[0])
+        p2 = int(input_size / patch_size[1])
+        self.fc = nn.Sequential(
+            Rearrange("b c w h -> b c (w h)"),
+            nn.Linear(p1 * p2, prediction_length * input_size),
+            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+        )
 
     def forward(self, x):
         x = self.fc(x)
         return x
 
 
-def RevMapLayer(layer_type: str,
-                pooling_type: str,
-                dim: int,
-                patch_size: int,
-                context_length: int,
-                prediction_length: int,
-                input_size: int):
+def RevMapLayer(
+    layer_type: str,
+    pooling_type: str,
+    dim: int,
+    patch_size: int,
+    context_length: int,
+    prediction_length: int,
+    input_size: int,
+):
     """
     Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
 
@@ -210,9 +219,13 @@ def RevMapLayer(layer_type: str,
     elif layer_type == "mlp":
         return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
     elif layer_type == "conv1d":
-        return Conv1dPatchMap(dim, patch_size, context_length, prediction_length, input_size)
+        return Conv1dPatchMap(
+            dim, patch_size, context_length, prediction_length, input_size
+        )
     elif layer_type == "conv2d":
-        return Conv2dPatchMap(dim, patch_size, context_length, prediction_length, input_size)
+        return Conv2dPatchMap(
+            dim, patch_size, context_length, prediction_length, input_size
+        )
     else:
         raise ValueError("Invalid layer type: {}".format(layer_type))
 
@@ -291,22 +304,31 @@ class MlpTSMixerModel(nn.Module):
         if not self.ablation:
             # This model is the original MlpTSMixer model.
 
-            num_patches = (self.context_length // patch_size[0]) * (self.input_size // patch_size[1])
+            num_patches = (self.context_length // patch_size[0]) * (
+                self.input_size // patch_size[1]
+            )
 
             self.mlp_mixer = nn.Sequential(
                 nn.Conv2d(
-                    self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
+                    self._number_of_features,
+                    dim,
+                    kernel_size=patch_size,
+                    stride=patch_size,
                 ),
                 Rearrange("b c w h -> b (h w) c"),
                 *[
                     nn.Sequential(
                         PreNormResidual(
                             dim,
-                            FeedForward(num_patches, expansion_factor, dropout, chan_first),
+                            FeedForward(
+                                num_patches, expansion_factor, dropout, chan_first
+                            ),
                         ),
                         PreNormResidual(
                             dim,
-                            FeedForward(dim, expansion_factor_token, dropout, chan_last),
+                            FeedForward(
+                                dim, expansion_factor_token, dropout, chan_last
+                            ),
                         ),
                     )
                     for i in range(depth)
@@ -345,28 +367,36 @@ class MlpTSMixerModel(nn.Module):
             # TODO:
             #  - add option for specifying the expansion factor for n_feat_xz*2, instead of using 2 as default
             #  - add option for specifying the expansion_factor_ablation, instead of using expansion_factor/2 as default
-            n_feat_xz = dim * 2  # since x and z are concatenated along the feature dimension
-            dim_xz = n_feat_xz * 2  # expansion factor for the hidden layer in the patch conv2d
-            expansion_factor_ablation = expansion_factor/2
-            num_patches = (self.prediction_length // patch_size[0]) * (self.input_size // patch_size[1])
+            n_feat_xz = (
+                dim * 2
+            )  # since x and z are concatenated along the feature dimension
+            dim_xz = (
+                n_feat_xz * 2
+            )  # expansion factor for the hidden layer in the patch conv2d
+            expansion_factor_ablation = expansion_factor / 2
+            num_patches = (self.prediction_length // patch_size[0]) * (
+                self.input_size // patch_size[1]
+            )
 
             self.mlp_mixer = nn.Sequential(
-                nn.Conv2d(
-                    n_feat_xz,
-                    dim_xz,
-                    kernel_size=patch_size,
-                    stride=patch_size
-                ),
+                nn.Conv2d(n_feat_xz, dim_xz, kernel_size=patch_size, stride=patch_size),
                 Rearrange("b c w h -> b (h w) c"),
                 *[
                     nn.Sequential(
                         PreNormResidual(
                             dim_xz,
-                            FeedForward(num_patches, expansion_factor_ablation, dropout, chan_first),
+                            FeedForward(
+                                num_patches,
+                                expansion_factor_ablation,
+                                dropout,
+                                chan_first,
+                            ),
                         ),
                         PreNormResidual(
                             dim_xz,
-                            FeedForward(dim_xz, expansion_factor_token, dropout, chan_last),
+                            FeedForward(
+                                dim_xz, expansion_factor_token, dropout, chan_last
+                            ),
                         ),
                     )
                     for i in range(depth)
@@ -424,7 +454,6 @@ class MlpTSMixerModel(nn.Module):
         future_target: Optional[torch.Tensor] = None,
         future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
-
         # [B, C, D], [B, D], [B, D]
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
         # [B, 1, C, D]

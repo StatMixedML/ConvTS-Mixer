@@ -155,9 +155,7 @@ class PatchTSTModel(nn.Module):
             encoder_layer, num_encoder_layers, encoder_norm
         )
 
-        self.flatten = nn.Linear(
-            d_model * self.patch_num, prediction_length * d_model
-        )
+        self.flatten = nn.Linear(d_model * self.patch_num, prediction_length * d_model)
 
         self.args_proj = self.distr_output.get_args_proj(d_model)
 
@@ -180,9 +178,7 @@ class PatchTSTModel(nn.Module):
         past_observed_values: torch.Tensor,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
         # scale the input
-        past_target_scaled, loc, scale = self.scaler(
-            past_target, past_observed_values
-        )
+        past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
 
         # do patching
         if self.padding_patch == "end":
