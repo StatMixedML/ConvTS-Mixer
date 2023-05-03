@@ -113,7 +113,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         patch_size: Tuple[int, int] = (7, 7),
         kernel_size: int = 3,
         batch_norm: bool = True,
-        patch_reverse_mapping_layer: str = "pooling",
+        patch_reverse_mapping_layer: str = "mlp",
         pooling_type: str = "max",
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
