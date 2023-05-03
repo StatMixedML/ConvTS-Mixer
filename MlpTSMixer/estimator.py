@@ -113,7 +113,7 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         expansion_factor_token: float = 0.5,
         expansion_factor: int = 4,
         ablation: bool = False,
-        patch_reverse_mapping_layer: str = "pooling",
+        patch_reverse_mapping_layer: str = "mlp",
         pooling_type: str = "max",
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,

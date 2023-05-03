@@ -16,6 +16,7 @@ from typing import Tuple, Optional
 import numpy as np
 import torch
 from torch import nn
+from einops.layers.torch import Rearrange
 
 from gluonts.core.component import validated
 from gluonts.model import Input, InputSpec
@@ -30,6 +31,83 @@ class Residual(nn.Module):
 
     def forward(self, x):
         return self.fn(x) + x
+
+
+class MLPPatchMap(nn.Module):
+    """
+    Module implementing MLPMap for the reverse mapping of the patch-tensor.
+
+    Parameters
+    ----------
+    patch_size : Tuple[int, int]
+        Patch size.
+    context_length : int
+        Context length.
+    prediction_length : int
+        Number of time points to predict.
+    input_size : int
+        Input size.
+
+    Returns
+    -------
+    x : torch.Tensor
+    """
+
+    def __init__(
+            self,
+            patch_size: int,
+            context_length: int,
+            prediction_length: int,
+            input_size: int,
+    ):
+        super().__init__()
+        p1 = int(context_length / patch_size[0])
+        p2 = int(input_size / patch_size[1])
+        self.fc = nn.Sequential(
+            Rearrange("b c w h -> b c (w h)"),
+            nn.Linear(p1 * p2, prediction_length * input_size),
+            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+        )
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+def RevMapLayer(
+        layer_type: str,
+        pooling_type: str,
+        dim: int,
+        patch_size: int,
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
+):
+    """
+    Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
+
+    :argument
+        layer_type: str = "pooling" or "mlp" or "conv1d"
+        pooling_type: str = "max" or "mean"
+        dim: int = dimension of the embeddings
+        patch_size: Tuple[int, int] = patch size
+        prediction_length: int = prediction length
+        context_length: int = context length
+        input_size: int = input size
+
+    :returns
+        nn.Module = mapping layer
+
+    """
+    if layer_type == "pooling":
+        if pooling_type == "max":
+            return nn.AdaptiveMaxPool2d((prediction_length, input_size))
+        elif pooling_type == "mean":
+            return nn.AdaptiveAvgPool2d((prediction_length, input_size))
+    elif layer_type == "mlp":
+        return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
+    else:
+        raise ValueError("Invalid layer type: {}".format(layer_type))
 
 
 class TsTModel(nn.Module):
@@ -66,7 +144,8 @@ class TsTModel(nn.Module):
         dropout: float,
         activation: str,
         norm_first: bool,
-        max_pool: bool = False,
+        patch_reverse_mapping_layer: str = "pooling",
+        pooling_type: str = "max",
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -120,10 +199,14 @@ class TsTModel(nn.Module):
         encoder_norm = nn.LayerNorm(dim, eps=layer_norm_eps)
         self.encoder = nn.TransformerEncoder(encoder_layer, depth, encoder_norm)
 
-        self.pool = (
-            nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size))
-            if max_pool
-            else nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
+        self.rev_map_layer = RevMapLayer(
+            layer_type=patch_reverse_mapping_layer,
+            pooling_type=pooling_type,
+            dim=dim,
+            patch_size=patch_size,
+            prediction_length=self.prediction_length,
+            context_length=self.context_length,
+            input_size=self.input_size,
         )
 
         self.args_proj = self.distr_output.get_args_proj(
@@ -198,7 +281,7 @@ class TsTModel(nn.Module):
         embed_pos = self.positional_encoding(x.size())
         enc_out = self.encoder(x + embed_pos)
 
-        nn_out = self.pool(enc_out.permute(0, 2, 1).reshape(B, C, H, W))
+        nn_out = self.rev_map_layer(enc_out.permute(0, 2, 1).reshape(B, C, H, W))
 
         # [B, F, C, D] -> [B, F, P, D]
 

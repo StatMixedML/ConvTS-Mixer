@@ -114,7 +114,8 @@ class TsTEstimator(PyTorchLightningEstimator):
         dropout=0.1,
         activation="relu",
         norm_first: bool = False,
-        max_pool: bool = False,
+        patch_reverse_mapping_layer: str = "mlp",
+        pooling_type: str = "max",
         scaling: Optional[str] = "mean",
         num_feat_dynamic_real: int = 0,
         num_feat_static_cat: int = 0,
@@ -165,7 +166,8 @@ class TsTEstimator(PyTorchLightningEstimator):
         self.dropout = dropout
         self.activation = activation
         self.norm_first = norm_first
-        self.max_pool = max_pool
+        self.patch_reverse_mapping_layer = patch_reverse_mapping_layer
+        self.pooling_type = pooling_type
         self.lr = lr
         self.weight_decay = weight_decay
         self.distr_output = distr_output
@@ -262,7 +264,8 @@ class TsTEstimator(PyTorchLightningEstimator):
                 "scaling": self.scaling,
                 "distr_output": self.distr_output,
                 "num_parallel_samples": self.num_parallel_samples,
-                "max_pool": self.max_pool,
+                "patch_reverse_mapping_layer": self.patch_reverse_mapping_layer,
+                "pooling_type": self.pooling_type,
             },
         )
 
