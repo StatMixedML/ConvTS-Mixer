@@ -15,6 +15,7 @@ from typing import Tuple, Optional
 
 import torch
 from torch import nn
+from einops.layers.torch import Rearrange
 
 from gluonts.core.component import validated
 from gluonts.model import Input, InputSpec
@@ -29,6 +30,78 @@ class Residual(nn.Module):
 
     def forward(self, x):
         return self.fn(x) + x
+
+
+class MLPPatchMap(nn.Module):
+    """
+    Module implementing MLPMap for the reverse mapping of the patch-tensor.
+
+    Parameters
+    ----------
+    patch_size : Tuple[int, int]
+        Patch size.
+    context_length : int
+        Context length.
+    prediction_length : int
+        Number of time points to predict.
+    input_size : int
+        Input size.
+
+    Returns
+    -------
+    x : torch.Tensor
+    """
+    def __init__(self,
+                 patch_size: int,
+                 context_length: int,
+                 prediction_length: int,
+                 input_size: int):
+        super().__init__()
+        p1 = int(context_length / patch_size[0])
+        p2 = int(input_size / patch_size[1])
+        self.fc = nn.Sequential(
+            Rearrange("b c w h -> b c (w h)"),
+            nn.Linear(p1 * p2, prediction_length * input_size),
+            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+        )
+
+    def forward(self, x):
+        x = self.fc(x)
+        return x
+
+
+def RevMapLayer(layer_type: str,
+                pooling_type: str,
+                dim: int,
+                patch_size: int,
+                context_length: int,
+                prediction_length: int,
+                input_size: int):
+    """
+    Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
+
+    :argument
+        layer_type: str = "pooling" or "mlp"
+        pooling_type: str = "max" or "mean"
+        dim: int = dimension of the embeddings
+        patch_size: Tuple[int, int] = patch size
+        prediction_length: int = prediction length
+        context_length: int = context length
+        input_size: int = input size
+
+    :returns
+        nn.Module = mapping layer
+
+    """
+    if layer_type == "pooling":
+        if pooling_type == "max":
+            return nn.AdaptiveMaxPool2d((prediction_length, input_size))
+        elif pooling_type == "mean":
+            return nn.AdaptiveAvgPool2d((prediction_length, input_size))
+    elif layer_type == "mlp":
+        return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
+    else:
+        raise ValueError("Invalid layer type: {}".format(layer_type))
 
 
 class ConvTSMixerModel(nn.Module):
@@ -48,6 +121,9 @@ class ConvTSMixerModel(nn.Module):
         Default: ``StudentTOutput()``.
     batch_norm
         Whether to apply batch normalization. Default: ``False``.
+    pooling_type
+        If mapping_layer_type == "pooling", specifies the type of pooling to use for mapping the patch-tensor to
+        [b nf h ns] . Default: ``max``.
     """
 
     @validated()
@@ -67,7 +143,8 @@ class ConvTSMixerModel(nn.Module):
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
         batch_norm: bool = True,
-        max_pool: bool = False,
+        patch_reverse_mapping_layer: str = "mlp",
+        pooling_type: str = "max",
     ) -> None:
         super().__init__()
 
@@ -114,9 +191,15 @@ class ConvTSMixerModel(nn.Module):
                 )
                 for i in range(depth)
             ],
-            nn.AdaptiveAvgPool2d((self.prediction_length, self.input_size))
-            if not max_pool
-            else nn.AdaptiveMaxPool2d((self.prediction_length, self.input_size)),
+            RevMapLayer(
+                layer_type=patch_reverse_mapping_layer,
+                pooling_type=pooling_type,
+                dim=dim,
+                patch_size=patch_size,
+                prediction_length=self.prediction_length,
+                context_length=self.context_length,
+                input_size=self.input_size,
+            ),
         )
 
         self.args_proj = self.distr_output.get_args_proj(
