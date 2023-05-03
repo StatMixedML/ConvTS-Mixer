@@ -45,6 +45,7 @@ class CtxMap(nn.Module):
     :return
         - x (tensor): output tensor
     """
+
     def __init__(self, context_length: int, prediction_length: int):
         super().__init__()
         self.context_length = context_length
@@ -71,9 +72,8 @@ class MLPTimeBlock(nn.Module):
     :return
         - x (tensor): output tensor
     """
-    def __init__(self,
-                 prediction_length: int,
-                 dropout: float = 0.1):
+
+    def __init__(self, prediction_length: int, dropout: float = 0.1):
         super().__init__()
 
         self.time_mlp = nn.Sequential(
@@ -100,10 +100,8 @@ class MLPFeatBlock(nn.Module):
     :return
         - x (tensor): output tensor
     """
-    def __init__(self,
-                 in_channels: int,
-                 hidden_size: int,
-                 dropout: float = 0.1):
+
+    def __init__(self, in_channels: int, hidden_size: int, dropout: float = 0.1):
         super().__init__()
 
         self.feat_mlp = nn.Sequential(
@@ -130,10 +128,8 @@ class MLPFeatMap(nn.Module):
     :return
         - x (tensor): output tensor
     """
-    def __init__(self,
-                 in_channels: int,
-                 hidden_size: int,
-                 dropout: float = 0.1):
+
+    def __init__(self, in_channels: int, hidden_size: int, dropout: float = 0.1):
         super().__init__()
         self.fc = nn.Sequential(
             Rearrange("b nf h ns -> b h ns nf"),
@@ -215,12 +211,10 @@ class TSMixerModel(nn.Module):
             *[
                 nn.Sequential(
                     PreNormResidual(
-                        dim_xz,
-                        MLPTimeBlock(self.prediction_length, dropout)
+                        dim_xz, MLPTimeBlock(self.prediction_length, dropout)
                     ),
                     PreNormResidual(
-                        dim_xz,
-                        MLPFeatBlock(dim_xz, dim_xz*expansion_factor, dropout)
+                        dim_xz, MLPFeatBlock(dim_xz, dim_xz * expansion_factor, dropout)
                     ),
                 )
                 for _ in range(depth)
@@ -296,7 +290,6 @@ class TSMixerModel(nn.Module):
             dim=1,
         )
 
-
         future_time_feat_repeat = future_time_feat.unsqueeze(2).repeat_interleave(
             dim=2, repeats=self.input_size
         )
@@ -307,7 +300,7 @@ class TSMixerModel(nn.Module):
         x_prime = self.mlp_x(x)
         z_prime = self.mlp_z(z)
         y_prime = torch.cat([x_prime, z_prime], dim=1)
-        nn_out = self.mlp_mixer_block(y_prime) # self.mixer_blocks(y_prime, s)
+        nn_out = self.mlp_mixer_block(y_prime)  # self.mixer_blocks(y_prime, s)
         nn_out_reshaped = rearrange(nn_out, "b nf h ns -> b h ns nf")
         distr_args = self.args_proj(nn_out_reshaped)
 

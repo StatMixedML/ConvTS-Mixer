@@ -133,7 +133,7 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         train_sampler: Optional[InstanceSampler] = None,
         validation_sampler: Optional[InstanceSampler] = None,
     ) -> None:
-        default_trainer_kwargs = {"max_epochs": 100, "gradient_clip_val": 10.0}
+        default_trainer_kwargs = {"max_epochs": 100}
         if trainer_kwargs is not None:
             default_trainer_kwargs.update(trainer_kwargs)
         super().__init__(trainer_kwargs=default_trainer_kwargs)

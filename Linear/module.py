@@ -120,7 +120,6 @@ class LinearModel(nn.Module):
         future_target: Optional[torch.Tensor] = None,
         future_observed_values: Optional[torch.Tensor] = None,
     ) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor, torch.Tensor]:
-
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
         nn_out = self.nn(past_target_scaled)
         nn_out_reshaped = nn_out.reshape(

@@ -71,9 +71,9 @@ class PatchTSTLightningModule(pl.LightningModule):
         distr_args, loc, scale = self.model(context, past_observed_values)
         distr = self.model.distr_output.distribution(distr_args, loc, scale)
 
-        return (
-            self.loss(distr, target) * observed_target
-        ).sum() / torch.maximum(torch.tensor(1.0), observed_target.sum())
+        return (self.loss(distr, target) * observed_target).sum() / torch.maximum(
+            torch.tensor(1.0), observed_target.sum()
+        )
 
     def training_step(self, batch, batch_idx: int):  # type: ignore
         """
@@ -94,9 +94,7 @@ class PatchTSTLightningModule(pl.LightningModule):
         Execute validation step.
         """
         val_loss = self._compute_loss(batch)
-        self.log(
-            "val_loss", val_loss, on_epoch=True, on_step=False, prog_bar=True
-        )
+        self.log("val_loss", val_loss, on_epoch=True, on_step=False, prog_bar=True)
         return val_loss
 
     def configure_optimizers(self):
