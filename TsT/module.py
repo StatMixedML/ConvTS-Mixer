@@ -54,19 +54,20 @@ class MLPPatchMap(nn.Module):
     """
 
     def __init__(
-            self,
-            patch_size: int,
-            context_length: int,
-            prediction_length: int,
-            input_size: int,
+        self,
+        patch_size: Tuple[int, int],
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
     ):
         super().__init__()
         p1 = int(context_length / patch_size[0])
         p2 = int(input_size / patch_size[1])
         self.fc = nn.Sequential(
-            Rearrange("b c w h -> b c (w h)"),
-            nn.Linear(p1 * p2, prediction_length * input_size),
-            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+            Rearrange("b c w h -> b c h w"),
+            nn.Linear(p1, prediction_length),
+            Rearrange("b c h w -> b c w h"),
+            nn.Linear(p2, input_size),
         )
 
     def forward(self, x):
@@ -75,13 +76,13 @@ class MLPPatchMap(nn.Module):
 
 
 def RevMapLayer(
-        layer_type: str,
-        pooling_type: str,
-        dim: int,
-        patch_size: int,
-        context_length: int,
-        prediction_length: int,
-        input_size: int,
+    layer_type: str,
+    pooling_type: str,
+    dim: int,
+    patch_size: int,
+    context_length: int,
+    prediction_length: int,
+    input_size: int,
 ):
     """
     Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].

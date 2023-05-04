@@ -167,7 +167,7 @@ class MLPPatchMap(nn.Module):
 
     def __init__(
         self,
-        patch_size: int,
+        patch_size: Tuple[int, int],
         context_length: int,
         prediction_length: int,
         input_size: int,
@@ -176,13 +176,14 @@ class MLPPatchMap(nn.Module):
         p1 = int(context_length / patch_size[0])
         p2 = int(input_size / patch_size[1])
         self.fc = nn.Sequential(
-            Rearrange("b c w h -> b c (w h)"),
-            nn.Linear(p1 * p2, prediction_length * input_size),
-            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+            Rearrange("b c w h -> b c h w"),
+            nn.Linear(p1, prediction_length),
+            Rearrange("b c h w -> b c w h"),
+            nn.Linear(p2, input_size),
         )
 
-    def forward(self, x):
-        x = self.fc(x)
+    def forward(self, inputs):
+        x = self.fc(inputs)
         return x
 
 
@@ -336,8 +337,8 @@ class MlpTSMixerModel(nn.Module):
                 nn.LayerNorm(dim),
                 Rearrange(
                     "b (h w) c -> b c w h",
-                    h=int(self.context_length / patch_size[0]),
-                    w=int(self.input_size / patch_size[1]),
+                    w=int(self.context_length / patch_size[0]),
+                    h=int(self.input_size / patch_size[1]),
                 ),
                 RevMapLayer(
                     layer_type=patch_reverse_mapping_layer,

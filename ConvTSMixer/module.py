@@ -51,18 +51,22 @@ class MLPPatchMap(nn.Module):
     -------
     x : torch.Tensor
     """
-    def __init__(self,
-                 patch_size: int,
-                 context_length: int,
-                 prediction_length: int,
-                 input_size: int):
+
+    def __init__(
+        self,
+        patch_size: Tuple[int, int],
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
+    ):
         super().__init__()
         p1 = int(context_length / patch_size[0])
         p2 = int(input_size / patch_size[1])
         self.fc = nn.Sequential(
-            Rearrange("b c w h -> b c (w h)"),
-            nn.Linear(p1 * p2, prediction_length * input_size),
-            Rearrange("b c (w h) -> b c w h", w=prediction_length, h=input_size),
+            Rearrange("b c w h -> b c h w"),
+            nn.Linear(p1, prediction_length),
+            Rearrange("b c h w -> b c w h"),
+            nn.Linear(p2, input_size),
         )
 
     def forward(self, x):
@@ -70,13 +74,70 @@ class MLPPatchMap(nn.Module):
         return x
 
 
-def RevMapLayer(layer_type: str,
-                pooling_type: str,
-                dim: int,
-                patch_size: int,
-                context_length: int,
-                prediction_length: int,
-                input_size: int):
+class ConvT2DMap(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        patch_size: Tuple[int, int],
+        context_length: int,
+        prediction_length: int,
+        input_size: int,
+    ):
+        super().__init__()
+
+        self.prediction_length = prediction_length
+        self.input_size = input_size
+
+        input_context_dim = context_length // patch_size[0]
+        input_variate_dim = input_size // patch_size[1]
+
+        stride_context_dim = (
+            self._compute_stride(
+                input_context_dim,
+                prediction_length,
+                padding=0,
+                kernel_size=patch_size[0],
+            )
+            + 1
+        )
+        stride_input_dim = (
+            self._compute_stride(
+                input_variate_dim,
+                input_size,
+                padding=0,
+                kernel_size=patch_size[1],
+            )
+            + 1
+        )
+
+        self.conv = nn.ConvTranspose2d(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            kernel_size=patch_size,
+            stride=(stride_context_dim, stride_input_dim),
+            padding=0,
+        )
+
+    def _compute_stride(self, l_in, l_out, padding, kernel_size):
+        """
+        Method to compute ConvTranspose1d where padding is known.
+        """
+        return (l_out + 2 * padding - kernel_size) // (l_in - 1)
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x[..., : self.prediction_length, : self.input_size]
+
+
+def RevMapLayer(
+    layer_type: str,
+    pooling_type: str,
+    dim: int,
+    patch_size: Tuple[int, int],
+    context_length: int,
+    prediction_length: int,
+    input_size: int,
+):
     """
     Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
 
@@ -100,6 +161,14 @@ def RevMapLayer(layer_type: str,
             return nn.AdaptiveAvgPool2d((prediction_length, input_size))
     elif layer_type == "mlp":
         return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
+    elif layer_type == "conv2d-transpose":
+        return ConvT2DMap(
+            in_channels=dim,
+            patch_size=patch_size,
+            context_length=context_length,
+            prediction_length=prediction_length,
+            input_size=input_size,
+        )
     else:
         raise ValueError("Invalid layer type: {}".format(layer_type))
 
