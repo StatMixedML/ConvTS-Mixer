@@ -177,9 +177,9 @@ class MLPPatchMap(nn.Module):
         p2 = int(input_size / patch_size[1])
         self.fc = nn.Sequential(
             Rearrange("b c w h -> b c h w"),
-            nn.Linear(p1, prediction_length),
+            nn.Linear(p2, prediction_length),
             Rearrange("b c h w -> b c w h"),
-            nn.Linear(p2, input_size),
+            nn.Linear(p1, input_size),
         )
 
     def forward(self, inputs):
