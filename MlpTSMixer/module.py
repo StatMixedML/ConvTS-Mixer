@@ -274,7 +274,7 @@ class MlpTSMixerModel(nn.Module):
         distr_output=StudentTOutput(),
         num_parallel_samples: int = 100,
         ablation: bool = False,
-        patch_reverse_mapping_layer: str = "pooling",
+        patch_reverse_mapping_layer: str = "mlp",
         pooling_type: str = "max",
     ) -> None:
         super().__init__()
