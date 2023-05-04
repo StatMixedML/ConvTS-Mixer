@@ -170,16 +170,22 @@ class MLPPatchMap(nn.Module):
         patch_size: Tuple[int, int],
         context_length: int,
         prediction_length: int,
+        ablation: bool,
         input_size: int,
     ):
         super().__init__()
-        p1 = int(context_length / patch_size[0])
-        p2 = int(input_size / patch_size[1])
+        if not ablation:
+            p1 = int(context_length / patch_size[0])
+            p2 = int(input_size / patch_size[1])
+        else:
+            p2 = int(context_length / patch_size[0])
+            p1 = int(input_size / patch_size[1])
+
         self.fc = nn.Sequential(
             Rearrange("b c w h -> b c h w"),
-            nn.Linear(p2, prediction_length),
+            nn.Linear(p1, prediction_length),
             Rearrange("b c h w -> b c w h"),
-            nn.Linear(p1, input_size),
+            nn.Linear(p2, input_size),
         )
 
     def forward(self, inputs):
@@ -195,6 +201,7 @@ def RevMapLayer(
     context_length: int,
     prediction_length: int,
     input_size: int,
+    ablation: bool,
 ):
     """
     Returns the mapping layer for the reverse mapping of the patch-tensor to [b nf h ns].
@@ -207,6 +214,7 @@ def RevMapLayer(
         prediction_length: int = prediction length
         context_length: int = context length
         input_size: int = input size
+        ablation: bool = ablation
 
     :returns
         nn.Module = mapping layer
@@ -218,7 +226,7 @@ def RevMapLayer(
         elif pooling_type == "mean":
             return nn.AdaptiveAvgPool2d((prediction_length, input_size))
     elif layer_type == "mlp":
-        return MLPPatchMap(patch_size, context_length, prediction_length, input_size)
+        return MLPPatchMap(patch_size, context_length, prediction_length, ablation, input_size)
     elif layer_type == "conv1d":
         return Conv1dPatchMap(
             dim, patch_size, context_length, prediction_length, input_size
@@ -348,6 +356,7 @@ class MlpTSMixerModel(nn.Module):
                     prediction_length=self.prediction_length,
                     context_length=self.context_length,
                     input_size=self.input_size,
+                    ablation=self.ablation,
                 ),
             )
 
@@ -416,6 +425,7 @@ class MlpTSMixerModel(nn.Module):
                     prediction_length=self.prediction_length,
                     context_length=self.prediction_length,
                     input_size=self.input_size,
+                    ablation=self.ablation,
                 ),
             )
 
