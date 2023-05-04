@@ -145,7 +145,7 @@ class TsTModel(nn.Module):
         dropout: float,
         activation: str,
         norm_first: bool,
-        patch_reverse_mapping_layer: str = "pooling",
+        patch_reverse_mapping_layer: str = "mlp",
         pooling_type: str = "max",
         num_feat_dynamic_real: int = 0,
         num_feat_static_real: int = 0,
