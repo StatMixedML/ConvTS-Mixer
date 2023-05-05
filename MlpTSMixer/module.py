@@ -25,7 +25,7 @@ from gluonts.torch.scaler import StdScaler, MeanScaler, NOPScaler
 from gluonts.torch.distributions import StudentTOutput
 
 # Only needed for the ablation study
-from TSMixer.module import CtxMap, MLPFeatMap
+from TSMixer.module_conv import CtxMap, MLPFeatMap
 
 
 class PreNormResidual(nn.Module):
