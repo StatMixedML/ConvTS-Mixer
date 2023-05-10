@@ -242,7 +242,15 @@ class ConvTSMixerModel(nn.Module):
                 self._number_of_features, dim, kernel_size=patch_size, stride=patch_size
             ),
             nn.GELU(),
-            nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
+            nn.BatchNorm2d(dim)
+            if batch_norm
+            else nn.LayerNorm(
+                [
+                    dim,
+                    self.context_length // patch_size[0],
+                    self.input_size // patch_size[1],
+                ]
+            ),
             *[
                 nn.Sequential(
                     Residual(
@@ -251,12 +259,28 @@ class ConvTSMixerModel(nn.Module):
                                 dim, dim, kernel_size, groups=dim, padding="same"
                             ),
                             nn.GELU(),
-                            nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
+                            nn.BatchNorm2d(dim)
+                            if batch_norm
+                            else nn.LayerNorm(
+                                [
+                                    dim,
+                                    self.context_length // patch_size[0],
+                                    self.input_size // patch_size[1],
+                                ]
+                            ),
                         )
                     ),
                     nn.Conv2d(dim, dim, kernel_size=1),
                     nn.GELU(),
-                    nn.BatchNorm2d(dim) if batch_norm else nn.Identity(),
+                    nn.BatchNorm2d(dim)
+                    if batch_norm
+                    else nn.LayerNorm(
+                        [
+                            dim,
+                            self.context_length // patch_size[0],
+                            self.input_size // patch_size[1],
+                        ]
+                    ),
                 )
                 for i in range(depth)
             ],
