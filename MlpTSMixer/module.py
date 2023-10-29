@@ -226,7 +226,9 @@ def RevMapLayer(
         elif pooling_type == "mean":
             return nn.AdaptiveAvgPool2d((prediction_length, input_size))
     elif layer_type == "mlp":
-        return MLPPatchMap(patch_size, context_length, prediction_length, ablation, input_size)
+        return MLPPatchMap(
+            patch_size, context_length, prediction_length, ablation, input_size
+        )
     elif layer_type == "conv1d":
         return Conv1dPatchMap(
             dim, patch_size, context_length, prediction_length, input_size

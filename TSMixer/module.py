@@ -36,10 +36,8 @@ class PreNormResidual(nn.Module):
     :return
         - x (tensor): output tensor
     """
-    def __init__(self,
-                 dim: int,
-                 prediction_length: int,
-                 fn):
+
+    def __init__(self, dim: int, prediction_length: int, fn):
         super().__init__()
         self.fn = fn
         self.norm = nn.LayerNorm([dim, prediction_length])
@@ -225,10 +223,14 @@ class TSMixerModel(nn.Module):
             *[
                 nn.Sequential(
                     PreNormResidual(
-                        dim_xz, self.prediction_length, MLPTimeBlock(self.prediction_length, dropout)
+                        dim_xz,
+                        self.prediction_length,
+                        MLPTimeBlock(self.prediction_length, dropout),
                     ),
                     PreNormResidual(
-                        dim_xz, self.prediction_length, MLPFeatBlock(dim_xz, dim_xz * expansion_factor, dropout)
+                        dim_xz,
+                        self.prediction_length,
+                        MLPFeatBlock(dim_xz, dim_xz * expansion_factor, dropout),
                     ),
                 )
                 for _ in range(depth)

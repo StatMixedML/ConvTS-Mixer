@@ -37,10 +37,8 @@ class PreNormResidual(nn.Module):
     :return
         - x (tensor): output tensor
     """
-    def __init__(self,
-                 dim: int,
-                 prediction_length: int,
-                 fn):
+
+    def __init__(self, dim: int, prediction_length: int, fn):
         super().__init__()
         self.fn = fn
         self.norm = nn.LayerNorm([dim, prediction_length])
@@ -62,11 +60,12 @@ class CtxMap(nn.Module):
         - x (tensor): output tensor
     """
 
-    def __init__(self,
-                 context_length: int,
-                 prediction_length: int,
-                 kernel_size: Tuple[int, int],
-                 ):
+    def __init__(
+        self,
+        context_length: int,
+        prediction_length: int,
+        kernel_size: Tuple[int, int],
+    ):
         super().__init__()
         self.context_length = context_length
         self.prediction_length = prediction_length
@@ -74,7 +73,12 @@ class CtxMap(nn.Module):
 
         self.conv2d = nn.Sequential(
             Rearrange("b nf h ns -> b h nf ns"),
-            nn.Conv2d(self.context_length, self.prediction_length, kernel_size=self.kernel_size, padding="same"),
+            nn.Conv2d(
+                self.context_length,
+                self.prediction_length,
+                kernel_size=self.kernel_size,
+                padding="same",
+            ),
             Rearrange("b h nf ns -> b nf h ns"),
         )
 
@@ -95,18 +99,21 @@ class MLPTimeBlock(nn.Module):
         - x (tensor): output tensor
     """
 
-    def __init__(self,
-                 prediction_length: int,
-                 kernel_size: Tuple[int, int],
-                 dropout: float = 0.1):
+    def __init__(
+        self, prediction_length: int, kernel_size: Tuple[int, int], dropout: float = 0.1
+    ):
         super().__init__()
         self.time_conv = nn.Sequential(
             Rearrange("b ns nf h -> b h nf ns"),
-            nn.Conv2d(prediction_length, prediction_length, kernel_size=kernel_size, padding="same"),
+            nn.Conv2d(
+                prediction_length,
+                prediction_length,
+                kernel_size=kernel_size,
+                padding="same",
+            ),
             nn.ReLU(),
             nn.Dropout(dropout),
             Rearrange("b h nf ns -> b ns nf h"),
-
         )
 
     def forward(self, x):
@@ -127,19 +134,25 @@ class MLPFeatBlock(nn.Module):
         - x (tensor): output tensor
     """
 
-    def __init__(self,
-                 in_channels: int,
-                 hidden_size: int,
-                 kernel_size: Tuple[int, int],
-                 dropout: float = 0.1):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_size: int,
+        kernel_size: Tuple[int, int],
+        dropout: float = 0.1,
+    ):
         super().__init__()
 
         self.feat_conv2d = nn.Sequential(
             Rearrange("b ns nf h -> b nf h ns"),
-            nn.Conv2d(in_channels, hidden_size, kernel_size=kernel_size, padding="same"),
+            nn.Conv2d(
+                in_channels, hidden_size, kernel_size=kernel_size, padding="same"
+            ),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Conv2d(hidden_size, in_channels, kernel_size=kernel_size, padding="same"),
+            nn.Conv2d(
+                hidden_size, in_channels, kernel_size=kernel_size, padding="same"
+            ),
             nn.Dropout(dropout),
             Rearrange("b nf h ns -> b ns nf h"),
         )
@@ -162,14 +175,18 @@ class MLPFeatMap(nn.Module):
         - x (tensor): output tensor
     """
 
-    def __init__(self,
-                 in_channels: int,
-                 hidden_size: int,
-                 kernel_size: Tuple[int, int],
-                 dropout: float = 0.1):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_size: int,
+        kernel_size: Tuple[int, int],
+        dropout: float = 0.1,
+    ):
         super().__init__()
         self.conv2d = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_size, kernel_size=kernel_size, padding="same"),
+            nn.Conv2d(
+                in_channels, hidden_size, kernel_size=kernel_size, padding="same"
+            ),
             nn.ReLU(),
             nn.Dropout(dropout),
         )
@@ -237,9 +254,15 @@ class TSMixerModel(nn.Module):
         else:
             self.scaler = NOPScaler(keepdim=True, dim=1)
 
-        self.linear_map = CtxMap(self.context_length, self.prediction_length, self.kernel_size)
-        self.mlp_x = MLPFeatMap(self._number_of_features, dim, self.kernel_size, dropout)
-        self.mlp_z = MLPFeatMap(self.num_feat_dynamic_real, dim, self.kernel_size, dropout)
+        self.linear_map = CtxMap(
+            self.context_length, self.prediction_length, self.kernel_size
+        )
+        self.mlp_x = MLPFeatMap(
+            self._number_of_features, dim, self.kernel_size, dropout
+        )
+        self.mlp_z = MLPFeatMap(
+            self.num_feat_dynamic_real, dim, self.kernel_size, dropout
+        )
 
         dim_xz = dim * 2  # since x and z are concatenated along the feature dimension
 
@@ -248,10 +271,16 @@ class TSMixerModel(nn.Module):
             *[
                 nn.Sequential(
                     PreNormResidual(
-                        dim_xz, self.prediction_length, MLPTimeBlock(self.prediction_length, self.kernel_size, dropout)
+                        dim_xz,
+                        self.prediction_length,
+                        MLPTimeBlock(self.prediction_length, self.kernel_size, dropout),
                     ),
                     PreNormResidual(
-                        dim_xz, self.prediction_length, MLPFeatBlock(dim_xz, dim_xz * expansion_factor, self.kernel_size, dropout)
+                        dim_xz,
+                        self.prediction_length,
+                        MLPFeatBlock(
+                            dim_xz, dim_xz * expansion_factor, self.kernel_size, dropout
+                        ),
                     ),
                 )
                 for _ in range(depth)
