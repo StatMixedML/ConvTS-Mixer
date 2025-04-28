@@ -22,7 +22,6 @@ from gluonts.dataset.field_names import FieldName
 from gluonts.dataset.loader import as_stacked_batches
 from gluonts.dataset.stat import calculate_dataset_statistics
 from gluonts.itertools import Cyclic
-from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
 from gluonts.transform import (
     Transformation,
     AddObservedValuesIndicator,
@@ -82,9 +81,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
     distr_output
         Distribution to use to evaluate observations and sample predictions
         (default: StudentTOutput()).
-    loss
-        Loss to be optimized during training
-        (default: ``NegativeLogLikelihood()``).
     batch_size
         The size of the batches to be used for training (default: 32).
     num_batches_per_epoch
@@ -125,7 +121,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         lr: float = 1e-3,
         weight_decay: float = 1e-8,
         distr_output: DistributionOutput = StudentTOutput(),
-        loss: DistributionLoss = NegativeLogLikelihood(),
         num_parallel_samples: int = 100,
         batch_size: int = 32,
         num_batches_per_epoch: int = 50,
@@ -170,7 +165,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
         self.weight_decay = weight_decay
         self.distr_output = distr_output
         self.num_parallel_samples = num_parallel_samples
-        self.loss = loss
         self.batch_size = batch_size
         self.num_batches_per_epoch = num_batches_per_epoch
 
@@ -240,7 +234,6 @@ class MlpTSMixerEstimator(PyTorchLightningEstimator):
 
     def create_lightning_module(self) -> pl.LightningModule:
         return MlpTSMixerLightningModule(
-            loss=self.loss,
             lr=self.lr,
             weight_decay=self.weight_decay,
             model_kwargs={

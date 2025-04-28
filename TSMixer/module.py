@@ -278,7 +278,7 @@ class TSMixerModel(nn.Module):
 
         past_target_scaled = past_target_scaled.unsqueeze(1)  # channel dim
 
-        log_abs_loc = loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
+        log_abs_loc = loc.sign().unsqueeze(1).expand_as(past_target_scaled) * loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
         log_scale = scale.log().unsqueeze(1).expand_as(past_target_scaled)
 
         past_time_feat = (

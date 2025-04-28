@@ -471,7 +471,7 @@ class MlpTSMixerModel(nn.Module):
         past_target_scaled, loc, scale = self.scaler(past_target, past_observed_values)
         # [B, 1, C, D]
         past_target_scaled = past_target_scaled.unsqueeze(1)
-        log_abs_loc = loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
+        log_abs_loc = loc.sign().unsqueeze(1).expand_as(past_target_scaled) * loc.abs().log1p().unsqueeze(1).expand_as(past_target_scaled)
         log_scale = scale.log().unsqueeze(1).expand_as(past_target_scaled)
         # [B, C, F] -> [B, F, C, 1] -> [B, F, C, D]
         past_time_feat = (

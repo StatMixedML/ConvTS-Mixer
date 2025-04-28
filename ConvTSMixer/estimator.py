@@ -14,7 +14,7 @@
 from typing import List, Optional, Iterable, Dict, Any, Tuple
 
 import torch
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from gluonts.core.component import validated
 from gluonts.dataset.common import Dataset
@@ -22,7 +22,6 @@ from gluonts.dataset.field_names import FieldName
 from gluonts.dataset.loader import as_stacked_batches
 from gluonts.dataset.stat import calculate_dataset_statistics
 from gluonts.itertools import Cyclic
-from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
 from gluonts.transform import (
     Transformation,
     AddObservedValuesIndicator,
@@ -82,9 +81,6 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
     distr_output
         Distribution to use to evaluate observations and sample predictions
         (default: StudentTOutput()).
-    loss
-        Loss to be optimized during training
-        (default: ``NegativeLogLikelihood()``).
     batch_norm
         Whether to apply batch normalization.
     batch_size
@@ -125,7 +121,6 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         lr: float = 1e-3,
         weight_decay: float = 1e-8,
         distr_output: DistributionOutput = StudentTOutput(),
-        loss: DistributionLoss = NegativeLogLikelihood(),
         num_parallel_samples: int = 100,
         batch_size: int = 32,
         num_batches_per_epoch: int = 50,
@@ -168,7 +163,6 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
         self.weight_decay = weight_decay
         self.distr_output = distr_output
         self.num_parallel_samples = num_parallel_samples
-        self.loss = loss
         self.batch_size = batch_size
         self.num_batches_per_epoch = num_batches_per_epoch
 
@@ -238,7 +232,6 @@ class ConvTSMixerEstimator(PyTorchLightningEstimator):
 
     def create_lightning_module(self) -> pl.LightningModule:
         return ConvTSMixerLightningModule(
-            loss=self.loss,
             lr=self.lr,
             weight_decay=self.weight_decay,
             model_kwargs={

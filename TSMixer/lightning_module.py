@@ -15,7 +15,6 @@ import pytorch_lightning as pl
 import torch
 
 from gluonts.core.component import validated
-from gluonts.torch.modules.loss import DistributionLoss, NegativeLogLikelihood
 
 from .module import TSMixerModel
 
@@ -32,9 +31,6 @@ class TSMixerLightningModule(pl.LightningModule):
     ----------
     model
         ``TSMixerModel`` to be trained.
-    loss
-        Loss function to be used for training,
-        default: ``NegativeLogLikelihood()``.
     lr
         Learning rate, default: ``1e-3``.
     weight_decay
@@ -45,14 +41,12 @@ class TSMixerLightningModule(pl.LightningModule):
     def __init__(
         self,
         model_kwargs: dict,
-        loss: DistributionLoss = NegativeLogLikelihood(),
         lr: float = 1e-3,
         weight_decay: float = 1e-8,
     ):
         super().__init__()
         self.save_hyperparameters()
         self.model = TSMixerModel(**model_kwargs)
-        self.loss = loss
         self.lr = lr
         self.weight_decay = weight_decay
 
@@ -81,9 +75,10 @@ class TSMixerLightningModule(pl.LightningModule):
             past_time_feat=batch["past_time_feat"],
             future_time_feat=batch["future_time_feat"],
         )
-        distr = self.model.distr_output.distribution(distr_args, loc, scale)
-
-        return (self.loss(distr, target) * observed_target).sum() / torch.maximum(
+        loss_values = self.model.distr_output.loss(
+            target=target, distr_args=distr_args, loc=loc, scale=scale
+        )
+        return (loss_values * observed_target).sum() / torch.maximum(
             torch.tensor(1.0), observed_target.sum()
         )
 
